@@ -1,6 +1,6 @@
-# Investment Portfolio Tracker - Backend
+# Vestpod - Backend
 
-This is the backend infrastructure for the Investment Portfolio Tracker application, built on Supabase (PostgreSQL + Edge Functions).
+This is the backend infrastructure for **Vestpod**, an investment portfolio tracker application, built on Supabase (PostgreSQL + Edge Functions).
 
 ## Architecture
 
@@ -24,7 +24,7 @@ This is the backend infrastructure for the Investment Portfolio Tracker applicat
 1. Go to [Supabase Dashboard](https://app.supabase.com/)
 2. Click "New Project"
 3. Fill in project details:
-   - **Name**: investment-portfolio-tracker
+   - **Name**: vestpod
    - **Database Password**: (save this securely)
    - **Region**: Choose closest to your users
 4. Wait for project to be provisioned (~2 minutes)
