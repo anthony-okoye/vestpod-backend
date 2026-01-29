@@ -4,16 +4,16 @@ on:
   pull_request:
     branches:
       - main
-      - dev
     paths:
-      - 'backend/**'
+      - '*'
       - '.github/workflows/**'
 
   push:
     branches:
       - dev
+      - main
     paths:
-      - 'backend/**'
+      - '*'
 
 jobs:
   lint-and-typecheck:
