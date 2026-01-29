@@ -134,11 +134,46 @@ Performance indexes are created on:
 
 ## Edge Functions
 
-Edge Functions will be added in subsequent tasks. They will be located in:
+### Deployed Functions
+
+**auth-handler** - Authentication operations
+- POST `/auth-handler/signup` - Initiate signup (sends OTP)
+- POST `/auth-handler/verify-otp` - Verify OTP and complete signup
+- POST `/auth-handler/resend-otp` - Resend OTP email
+- POST `/auth-handler/signin` - Email/password signin
+- POST `/auth-handler/reset-password` - Send password reset email
+- POST `/auth-handler/update-password` - Update password after reset
+- POST `/auth-handler/signout` - Sign out user
+
+**oauth-callback** - OAuth callback handler
+- Handles Google and Apple OAuth callbacks
+- Creates user profile automatically
+
+**portfolio-handler** - Portfolio CRUD operations
+- POST `/portfolio-handler/create` - Create new portfolio
+- GET `/portfolio-handler/list` - List all user portfolios
+- GET `/portfolio-handler/:id` - Get single portfolio
+- PUT `/portfolio-handler/:id` - Update portfolio
+- DELETE `/portfolio-handler/:id` - Delete portfolio
+
+### Deployment
+
+```bash
+# Deploy all functions
+supabase functions deploy
+
+# Or deploy individually
+supabase functions deploy auth-handler
+supabase functions deploy oauth-callback
+supabase functions deploy portfolio-handler
+```
+
+### Pending Functions
+
+Functions to be implemented in subsequent tasks:
 
 ```
 backend/functions/
-├── portfolio-crud/
 ├── asset-crud/
 ├── price-updater/
 ├── alert-checker/
@@ -305,11 +340,12 @@ SELECT * FROM portfolios;
 
 1. ✅ Database schema created
 2. ✅ Authentication System implemented (Task 2)
-3. ✅ Swagger/OpenAPI documentation created
-4. ✅ CI/CD pipeline configured
-5. ⏳ Implement Portfolio CRUD Operations (Task 3)
+3. ✅ Portfolio CRUD Operations implemented (Task 3)
+4. ✅ Swagger/OpenAPI documentation updated
+5. ✅ CI/CD pipeline configured
 6. ⏳ Integrate Financial APIs (Tasks 5-9)
-7. ⏳ Implement Edge Functions (Tasks 11-28)
+7. ⏳ Implement Asset Management (Task 11)
+8. ⏳ Implement remaining Edge Functions (Tasks 12-28)
 
 ## CI/CD Pipeline
 

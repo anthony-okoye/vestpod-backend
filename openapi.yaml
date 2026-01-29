@@ -1,26 +1,39 @@
 openapi: 3.0.3
 info:
-  title: Vestpod Authentication API
+  title: Vestpod API
   description: |
-    Authentication system for Vestpod - Investment Portfolio Tracker
+    API for Vestpod - Investment Portfolio Tracker
     
     ## Features
+    
+    ### Authentication
     - Email/Password signup with OTP verification
     - Email/Password signin
     - Password reset flow
     - OAuth integration (Google, Apple)
     - Automatic user profile creation
     
+    ### Portfolio Management
+    - Create, read, update, delete portfolios
+    - Automatic default portfolio creation on signup
+    - Portfolio value and performance tracking
+    - Unique portfolio name validation
+    
     ## Base URL
     - Production: `https://kymsclhnftswfftvlmip.supabase.co/functions/v1`
     - Local: `http://localhost:54321/functions/v1`
     
     ## Authentication
-    All endpoints require the `Authorization` header with your Supabase publishable key:
+    All endpoints require the `Authorization` header with your Supabase access token:
+    ```
+    Authorization: Bearer your-access-token-here
+    ```
+    
+    For testing authentication endpoints, use your publishable key:
     ```
     Authorization: Bearer sb_publishable_your-key-here
     ```
-  version: 1.0.0
+  version: 1.1.0
   contact:
     name: Vestpod API Support
     email: support@vestpod.com
@@ -36,6 +49,8 @@ tags:
     description: User authentication operations
   - name: OAuth
     description: OAuth provider callbacks
+  - name: Portfolio
+    description: Portfolio management operations
 
 paths:
   /auth-handler/signup:
@@ -454,6 +469,281 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /portfolio-handler/create:
+    post:
+      tags:
+        - Portfolio
+      summary: Create a new portfolio
+      description: |
+        Creates a new portfolio for the authenticated user.
+        Portfolio name must be unique for the user.
+      operationId: createPortfolio
+      security:
+        - BearerAuth: []
+          ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: Tech Stocks
+                  description: Unique portfolio name
+                description:
+                  type: string
+                  example: My technology sector investments
+                  description: Optional portfolio description
+      responses:
+        '201':
+          description: Portfolio created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Portfolio created successfully
+                  portfolio:
+                    $ref: '#/components/schemas/Portfolio'
+        '400':
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Portfolio name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Portfolio name already exists. Please choose a different name.
+
+  /portfolio-handler/list:
+    get:
+      tags:
+        - Portfolio
+      summary: Get all portfolios
+      description: |
+        Returns all portfolios for the authenticated user with calculated metrics.
+        Includes total value, cost, and performance for each portfolio.
+      operationId: listPortfolios
+      security:
+        - BearerAuth: []
+          ApiKeyAuth: []
+      responses:
+        '200':
+          description: Portfolios retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  portfolios:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Portfolio'
+        '401':
+          description: Unauthorized - invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /portfolio-handler/{id}:
+    get:
+      tags:
+        - Portfolio
+      summary: Get a single portfolio
+      description: Returns detailed information about a specific portfolio
+      operationId: getPortfolio
+      security:
+        - BearerAuth: []
+          ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Portfolio ID
+      responses:
+        '200':
+          description: Portfolio retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  portfolio:
+                    $ref: '#/components/schemas/PortfolioDetail'
+        '401':
+          description: Unauthorized - invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Portfolio not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Portfolio not found
+
+    put:
+      tags:
+        - Portfolio
+      summary: Update portfolio
+      description: |
+        Updates portfolio name or description.
+        Portfolio name must remain unique for the user.
+      operationId: updatePortfolio
+      security:
+        - BearerAuth: []
+          ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Portfolio ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: Updated Portfolio Name
+                description:
+                  type: string
+                  example: Updated description
+      responses:
+        '200':
+          description: Portfolio updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Portfolio updated successfully
+                  portfolio:
+                    $ref: '#/components/schemas/Portfolio'
+        '400':
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Portfolio not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Portfolio name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Portfolio
+      summary: Delete portfolio
+      description: |
+        Deletes a portfolio and all associated assets.
+        Cannot delete if it's the user's only portfolio.
+      operationId: deletePortfolio
+      security:
+        - BearerAuth: []
+          ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Portfolio ID
+      responses:
+        '200':
+          description: Portfolio deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Portfolio deleted successfully
+        '400':
+          description: Cannot delete only portfolio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Cannot delete your only portfolio. Create another portfolio first.
+        '401':
+          description: Unauthorized - invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Portfolio not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -461,14 +751,25 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        Supabase publishable key or user access token.
+        User access token from signin/verify-otp response.
         
-        For most endpoints, use your publishable key:
+        For portfolio and other protected endpoints, use the user's JWT access token:
         ```
-        Authorization: Bearer sb_publishable_your-key-here
+        Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        ```
+    
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: apikey
+      description: |
+        Supabase anon/publishable key required for all requests.
+        
+        ```
+        apikey: sb_publishable_your-key-here
         ```
         
-        For authenticated endpoints (signout, update-password), use the user's access token from signin/verify-otp response.
+        Get this from your Supabase project settings.
 
   schemas:
     User:
@@ -511,6 +812,53 @@ components:
         error:
           type: string
           example: Invalid credentials
+
+    Portfolio:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 123e4567-e89b-12d3-a456-426614174000
+        name:
+          type: string
+          example: My Portfolio
+        description:
+          type: string
+          nullable: true
+          example: My main investment portfolio
+        isDefault:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: 2024-01-15T10:30:00Z
+        totalValue:
+          type: number
+          format: double
+          example: 50000.00
+          description: Total current value of all assets
+        totalCost:
+          type: number
+          format: double
+          example: 45000.00
+          description: Total purchase cost of all assets
+        performance:
+          type: number
+          format: double
+          example: 11.11
+          description: Performance percentage
+
+    PortfolioDetail:
+      allOf:
+        - $ref: '#/components/schemas/Portfolio'
+        - type: object
+          properties:
+            assetCount:
+              type: integer
+              example: 15
+              description: Number of assets in portfolio
 
   examples:
     SignupRequest:
