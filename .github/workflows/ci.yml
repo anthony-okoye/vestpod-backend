@@ -41,7 +41,7 @@ jobs:
 
       - name: Type Check Edge Functions
         run: |
-          cd backend/supabase/functions
+          cd supabase/functions
           echo "🔍 Type checking Edge Functions..."
           for dir in */; do
             echo "Type checking ${dir}..."
