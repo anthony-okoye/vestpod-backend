@@ -10,8 +10,8 @@ on:
 
   push:
     branches:
-      - dev
       - main
+      - dev
     paths:
       - '*'
 
