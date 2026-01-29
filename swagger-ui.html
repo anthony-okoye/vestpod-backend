@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vestpod Authentication API - Swagger UI</title>
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.10.5/swagger-ui.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+        .topbar {
+            display: none;
+        }
+        .swagger-ui .info {
+            margin: 20px 0;
+        }
+        .swagger-ui .info .title {
+            font-size: 36px;
+            color: #3b82f6;
+        }
+    </style>
+</head>
+<body>
+    <div id="swagger-ui"></div>
+    
+    <script src="https://unpkg.com/swagger-ui-dist@5.10.5/swagger-ui-bundle.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5.10.5/swagger-ui-standalone-preset.js"></script>
+</body>
+<body>
+
+    <!-- Try to load config.js (gitignored, for local development) -->
+    <script src="./config.js"></script>
+    <script>
+        window.onload = function() {
+            // Try to get key from multiple sources (priority order)
+            let publishableKey = null;
+            
+            // 1. Try config.js (local development)
+            if (typeof swaggerConfig !== 'undefined' && swaggerConfig.publishableKey) {
+                publishableKey = swaggerConfig.publishableKey;
+            }
+            
+            // 2. Try localStorage (previously saved)
+            if (!publishableKey || publishableKey === "sb_publishable_your-key-here") {
+                publishableKey = localStorage.getItem('supabase_publishable_key');
+            }
+            
+            // 3. Prompt user if still not found
+            if (!publishableKey || publishableKey === "sb_publishable_your-key-here") {
+                publishableKey = prompt(
+                    'Enter your Supabase Publishable Key:\n\n' +
+                    'Get it from: https://supabase.com/dashboard/project/kymsclhnftswfftvlmip/settings/api\n' +
+                    'Click "API Keys" tab and copy the "Publishable key"'
+                );
+                
+                if (publishableKey) {
+                    // Save to localStorage for next time
+                    localStorage.setItem('supabase_publishable_key', publishableKey);
+                } else {
+                    alert('Publishable key is required to test the API');
+                    return;
+                }
+            }
+            
+            // Display key status
+            console.log('✅ Publishable key loaded:', publishableKey.substring(0, 20) + '...');
+            
+            const ui = SwaggerUIBundle({
+                url: "./openapi.yaml",
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                layout: "StandaloneLayout",
+                defaultModelsExpandDepth: 1,
+                defaultModelExpandDepth: 1,
+                docExpansion: "list",
+                filter: true,
+                showExtensions: true,
+                showCommonExtensions: true,
+                tryItOutEnabled: true,
+                requestInterceptor: (request) => {
+                    // Public endpoints don't need auth header
+                    const publicEndpoints = ['/signup', '/signin', '/reset-password', '/verify-otp', '/resend-otp'];
+                    const isPublic = publicEndpoints.some(endpoint => request.url.includes(endpoint));
+                    
+                    if (isPublic) {
+                        // Remove auth header for public endpoints
+                        delete request.headers.Authorization;
+                    } else if (!request.headers.Authorization || request.headers.Authorization === "Bearer undefined") {
+                        // Add session token for protected endpoints (user must be signed in)
+                        request.headers.Authorization = `Bearer ${publishableKey}`;
+                    }
+                    
+                    return request;
+                }
+            });
+
+            window.ui = ui;
+            
+            // Add button to clear saved key
+            setTimeout(() => {
+                const topbar = document.querySelector('.topbar');
+                if (topbar) {
+                    const clearBtn = document.createElement('button');
+                    clearBtn.textContent = 'Clear Saved Key';
+                    clearBtn.style.cssText = 'margin-left: 10px; padding: 5px 10px; cursor: pointer;';
+                    clearBtn.onclick = () => {
+                        localStorage.removeItem('supabase_publishable_key');
+                        alert('Saved key cleared. Refresh page to enter a new key.');
+                    };
+                    topbar.appendChild(clearBtn);
+                }
+            }, 1000);
+        };
+    </script>

@@ -1,0 +1,356 @@
+{
+  "info": {
+    "name": "Vestpod Authentication API",
+    "description": "Complete authentication API for Vestpod - Investment Portfolio Tracker",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://kymsclhnftswfftvlmip.supabase.co/functions/v1",
+      "type": "string"
+    },
+    {
+      "key": "publishableKey",
+      "value": "sb_publishable_your-key-here",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Signup Flow",
+      "item": [
+        {
+          "name": "1.1 Initiate Signup",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.environment.set('userId', jsonData.userId);",
+                  "    pm.environment.set('userEmail', jsonData.email);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{publishableKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"Test1234\",\n  \"fullName\": \"Test User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth-handler/signup",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth-handler", "signup"]
+            },
+            "description": "Creates a new user account and sends OTP to email"
+          },
+          "response": []
+        },
+        {
+          "name": "1.2 Verify OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('accessToken', jsonData.session.access_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{publishableKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"token\": \"123456\",\n  \"type\": \"signup\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth-handler/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth-handler", "verify-otp"]
+            },
+            "description": "Verifies OTP code and completes signup. Check your email for the 6-digit code."
+          },
+          "response": []
+        },
+        {
+          "name": "1.3 Resend OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{publishableKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"type\": \"signup\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth-handler/resend-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth-handler", "resend-otp"]
+            },
+            "description": "Resends OTP email if previous one expired"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Signin Flow",
+      "item": [
+        {
+          "name": "2.1 Signin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('accessToken', jsonData.session.access_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{publishableKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"Test1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth-handler/signin",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth-handler", "signin"]
+            },
+            "description": "Sign in with email and password. Email must be verified first."
+          },
+          "response": []
+        },
+        {
+          "name": "2.2 Signout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth-handler/signout",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth-handler", "signout"]
+            },
+            "description": "Sign out current user"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Password Reset Flow",
+      "item": [
+        {
+          "name": "3.1 Request Password Reset",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{publishableKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth-handler/reset-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth-handler", "reset-password"]
+            },
+            "description": "Sends password reset email with reset link"
+          },
+          "response": []
+        },
+        {
+          "name": "3.2 Update Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "description": "Use access token from reset email"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newPassword\": \"NewTest1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth-handler/update-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth-handler", "update-password"]
+            },
+            "description": "Updates password using reset token from email"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Error Cases",
+      "item": [
+        {
+          "name": "4.1 Signup - Weak Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{publishableKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"weak\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth-handler/signup",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth-handler", "signup"]
+            },
+            "description": "Test password validation - should fail"
+          },
+          "response": []
+        },
+        {
+          "name": "4.2 Signin - Unverified Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{publishableKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"unverified@example.com\",\n  \"password\": \"Test1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth-handler/signin",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth-handler", "signin"]
+            },
+            "description": "Test signin with unverified email - should fail with 403"
+          },
+          "response": []
+        },
+        {
+          "name": "4.3 Signin - Invalid Credentials",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{publishableKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"WrongPassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth-handler/signin",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth-handler", "signin"]
+            },
+            "description": "Test signin with wrong password - should fail with 401"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

@@ -3,6 +3,9 @@
 .env.local
 .env.*.local
 
+# Swagger UI config (contains API keys)
+config.js
+
 # Supabase
 .supabase/
 
@@ -24,9 +27,14 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+*.bat
+*.ps1
+*.code-workspace
 *~
 
 # Temporary files
 *.tmp
 temp/
 tmp/
+*.md
+!README.md

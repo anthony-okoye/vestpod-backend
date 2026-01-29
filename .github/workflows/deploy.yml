@@ -1,0 +1,93 @@
+name: Deploy to Supabase
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/supabase/functions/**'
+      - 'backend/migrations/**'
+      - '.github/workflows/deploy.yml'
+
+  workflow_dispatch:
+    inputs:
+      function_name:
+        description: 'Specific function to deploy (leave empty for all)'
+        required: false
+        type: string
+
+jobs:
+  validate:
+    name: Validate Code
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Lint Edge Functions
+        run: |
+          cd backend/supabase/functions
+          for dir in */; do
+            echo "Linting ${dir}..."
+            deno lint "${dir}"
+          done
+
+      - name: Type Check Edge Functions
+        run: |
+          cd backend/supabase/functions
+          for dir in */; do
+            echo "Type checking ${dir}..."
+            deno check "${dir}index.ts"
+          done
+
+      - name: Validate OpenAPI Spec
+        run: |
+          npm install -g @apidevtools/swagger-cli
+          swagger-cli validate backend/openapi.yaml
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: validate
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy Edge Functions
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          cd backend
+          
+          # Link to project
+          supabase link --project-ref $SUPABASE_PROJECT_ID
+          
+          # Deploy specific function or all functions
+          if [ -n "${{ github.event.inputs.function_name }}" ]; then
+            echo "Deploying function: ${{ github.event.inputs.function_name }}"
+            supabase functions deploy ${{ github.event.inputs.function_name }}
+          else
+            echo "Deploying all functions..."
+            supabase functions deploy auth-handler
+            supabase functions deploy oauth-callback
+          fi
+
+      - name: Deployment Summary
+        run: |
+          echo "✅ Deployment completed successfully!"
+          echo "📦 Functions deployed to: https://kymsclhnftswfftvlmip.supabase.co/functions/v1"
+          echo "📊 View logs: https://supabase.com/dashboard/project/kymsclhnftswfftvlmip/functions"

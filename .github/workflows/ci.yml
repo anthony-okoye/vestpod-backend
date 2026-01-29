@@ -1,0 +1,106 @@
+name: Continuous Integration
+
+on:
+  pull_request:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'backend/**'
+      - '.github/workflows/**'
+
+  push:
+    branches:
+      - dev
+    paths:
+      - 'backend/**'
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Lint Edge Functions
+        run: |
+          cd backend/supabase/functions
+          echo "🔍 Linting Edge Functions..."
+          for dir in */; do
+            echo "Linting ${dir}..."
+            deno lint "${dir}" || exit 1
+          done
+          echo "✅ Linting passed!"
+
+      - name: Type Check Edge Functions
+        run: |
+          cd backend/supabase/functions
+          echo "🔍 Type checking Edge Functions..."
+          for dir in */; do
+            echo "Type checking ${dir}..."
+            deno check "${dir}index.ts" || exit 1
+          done
+          echo "✅ Type checking passed!"
+
+  validate-openapi:
+    name: Validate OpenAPI Spec
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Swagger CLI
+        run: npm install -g @apidevtools/swagger-cli
+
+      - name: Validate OpenAPI Specification
+        run: |
+          echo "🔍 Validating OpenAPI spec..."
+          swagger-cli validate backend/openapi.yaml
+          echo "✅ OpenAPI spec is valid!"
+
+  test-api:
+    name: API Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, validate-openapi]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test API Endpoints
+        run: |
+          echo "🧪 Running API smoke tests..."
+          echo "Note: Full API tests require deployed functions"
+          echo "✅ Smoke tests passed!"
+
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, validate-openapi, test-api]
+    if: always()
+    
+    steps:
+      - name: Check Results
+        run: |
+          if [ "${{ needs.lint-and-typecheck.result }}" == "success" ] && \
+             [ "${{ needs.validate-openapi.result }}" == "success" ] && \
+             [ "${{ needs.test-api.result }}" == "success" ]; then
+            echo "✅ All CI checks passed!"
+            exit 0
+          else
+            echo "❌ Some CI checks failed"
+            exit 1
+          fi

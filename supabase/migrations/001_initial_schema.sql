@@ -5,9 +5,9 @@
 -- This migration creates all tables, RLS policies, and indexes
 -- Requirements: 1, 2, 14
 
--- Enable necessary extensions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+-- Enable necessary extensions in extensions schema
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" SCHEMA extensions;
 
 -- =====================================================
 -- TABLE 1: user_profiles
@@ -37,7 +37,7 @@ CREATE TABLE user_profiles (
 -- Requirements: 2
 
 CREATE TABLE portfolios (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     description TEXT,
@@ -54,7 +54,7 @@ CREATE TABLE portfolios (
 -- Requirements: 3, 4
 
 CREATE TABLE assets (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     portfolio_id UUID NOT NULL REFERENCES portfolios(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
     
@@ -88,7 +88,7 @@ CREATE TABLE assets (
 -- Requirements: 5, 6
 
 CREATE TABLE price_history (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
     symbol TEXT NOT NULL,
     asset_type TEXT NOT NULL,
@@ -106,7 +106,7 @@ CREATE TABLE price_history (
 -- Requirements: 7
 
 CREATE TABLE alerts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
     
@@ -134,7 +134,7 @@ CREATE TABLE alerts (
 -- Requirements: 10
 
 CREATE TABLE subscriptions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL UNIQUE REFERENCES user_profiles(id) ON DELETE CASCADE,
     
     -- RevenueCat data
@@ -165,7 +165,7 @@ CREATE TABLE subscriptions (
 -- Requirements: 8
 
 CREATE TABLE ai_insights (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
     
     -- Portfolio health metrics
@@ -194,7 +194,7 @@ CREATE TABLE ai_insights (
 -- Requirements: 9
 
 CREATE TABLE ai_chat_history (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
     
     -- Message data

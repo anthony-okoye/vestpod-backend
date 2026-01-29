@@ -49,8 +49,8 @@ nano .env
 
 Required variables:
 - `SUPABASE_URL`: Your project URL
-- `SUPABASE_ANON_KEY`: Your anon key
-- `SUPABASE_SERVICE_ROLE_KEY`: Your service role key
+- `SUPABASE_PUBLISHABLE_KEY`: Your publishable key (for client-side, starts with `sb_publishable_...`)
+- `SUPABASE_SECRET_KEY`: Your secret key (for server-side, starts with `sb_secret_...`)
 
 ### 4. Link Local Project to Supabase
 
@@ -304,10 +304,114 @@ SELECT * FROM portfolios;
 ## Next Steps
 
 1. ✅ Database schema created
-2. ⏳ Implement Authentication System (Task 2)
-3. ⏳ Implement Portfolio CRUD Operations (Task 3)
-4. ⏳ Integrate Financial APIs (Tasks 5-9)
-5. ⏳ Implement Edge Functions (Tasks 11-28)
+2. ✅ Authentication System implemented (Task 2)
+3. ✅ Swagger/OpenAPI documentation created
+4. ✅ CI/CD pipeline configured
+5. ⏳ Implement Portfolio CRUD Operations (Task 3)
+6. ⏳ Integrate Financial APIs (Tasks 5-9)
+7. ⏳ Implement Edge Functions (Tasks 11-28)
+
+## CI/CD Pipeline
+
+### Automated Deployment
+
+The project uses GitHub Actions for continuous integration and deployment:
+
+**Workflows:**
+- **CI** (`ci.yml`) - Runs on PRs, validates code quality
+- **Deploy** (`deploy.yml`) - Runs on push to main, auto-deploys to Supabase
+
+**Setup:**
+1. Add GitHub Secrets:
+   - `SUPABASE_ACCESS_TOKEN` - Get via `npx supabase access-token`
+   - `SUPABASE_PROJECT_ID` - `kymsclhnftswfftvlmip`
+2. Push to `main` branch to trigger deployment
+
+**Documentation:**
+- Quick Start: `.github/QUICK_REFERENCE.md`
+- Full Guide: `.github/CICD_SETUP.md`
+
+## Authentication System
+
+### Overview
+
+The authentication system supports:
+- ✅ Email/Password signup with OTP verification
+- ✅ Email/Password signin
+- ✅ Password reset flow
+- ✅ Google OAuth
+- ✅ Apple OAuth
+- ✅ Automatic user profile creation
+- ✅ Secure token management
+
+### Edge Functions
+
+**auth-handler** - Main authentication handler
+- POST `/auth-handler/signup` - Initiate signup (sends OTP)
+- POST `/auth-handler/verify-otp` - Verify OTP and complete signup
+- POST `/auth-handler/resend-otp` - Resend OTP email
+- POST `/auth-handler/signin` - Email/password signin
+- POST `/auth-handler/reset-password` - Send password reset email
+- POST `/auth-handler/update-password` - Update password after reset
+- POST `/auth-handler/signout` - Sign out user
+
+**oauth-callback** - OAuth callback handler
+- Handles Google and Apple OAuth callbacks
+- Creates user profile automatically
+
+### Deploy Authentication Functions
+
+```bash
+# Deploy auth-handler
+supabase functions deploy auth-handler
+
+# Deploy oauth-callback
+supabase functions deploy oauth-callback
+
+# Set environment variables in Supabase Dashboard
+# Settings → Edge Functions → Add secrets:
+# - SUPABASE_URL
+# - SUPABASE_SECRET_KEY (modern secret key: sb_secret_...)
+# - SITE_URL
+```
+
+### Configure OAuth Providers
+
+See `AUTH_TESTING.md` for detailed OAuth setup instructions.
+
+**Quick Setup:**
+1. Create OAuth credentials in Google Cloud Console / Apple Developer Portal
+2. Add redirect URI: `https://your-project-id.supabase.co/auth/v1/callback`
+3. Enable providers in Supabase Dashboard → Authentication → Providers
+4. Add Client ID and Secret
+
+## Testing Authentication
+
+See `AUTH_TESTING.md` for comprehensive testing guide including:
+- Email/Password signup with OTP
+- OAuth flows (Google, Apple)
+- Password reset
+- Security testing
+- Mobile app integration examples
+
+### Interactive API Testing
+
+We provide multiple ways to test the API:
+
+**1. Swagger UI (Recommended)**
+- Open `swagger-ui.html` in browser (requires local server)
+- Interactive documentation with "Try it out" feature
+- See `SWAGGER_GUIDE.md` for setup instructions
+
+**2. Postman Collection**
+- Import `Vestpod-Auth-API.postman_collection.json`
+- Pre-configured requests with examples
+- Automatic token management
+
+**3. OpenAPI Specification**
+- `openapi.yaml` - Complete API specification
+- Import into any OpenAPI-compatible tool
+- Generate client SDKs automatically
 
 ## Resources
 

@@ -1,0 +1,555 @@
+openapi: 3.0.3
+info:
+  title: Vestpod Authentication API
+  description: |
+    Authentication system for Vestpod - Investment Portfolio Tracker
+    
+    ## Features
+    - Email/Password signup with OTP verification
+    - Email/Password signin
+    - Password reset flow
+    - OAuth integration (Google, Apple)
+    - Automatic user profile creation
+    
+    ## Base URL
+    - Production: `https://kymsclhnftswfftvlmip.supabase.co/functions/v1`
+    - Local: `http://localhost:54321/functions/v1`
+    
+    ## Authentication
+    All endpoints require the `Authorization` header with your Supabase publishable key:
+    ```
+    Authorization: Bearer sb_publishable_your-key-here
+    ```
+  version: 1.0.0
+  contact:
+    name: Vestpod API Support
+    email: support@vestpod.com
+
+servers:
+  - url: https://kymsclhnftswfftvlmip.supabase.co/functions/v1
+    description: Production server
+  - url: http://localhost:54321/functions/v1
+    description: Local development server
+
+tags:
+  - name: Authentication
+    description: User authentication operations
+  - name: OAuth
+    description: OAuth provider callbacks
+
+paths:
+  /auth-handler/signup:
+    post:
+      tags:
+        - Authentication
+      summary: Initiate email/password signup
+      description: |
+        Creates a new user account and sends an OTP verification email.
+        
+        **Password Requirements:**
+        - Minimum 8 characters
+        - Must contain uppercase letter
+        - Must contain lowercase letter
+        - Must contain number
+      operationId: signup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - firstName
+                - lastName
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                  description: User's email address
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: Test1234
+                  description: Password (min 8 chars, uppercase, lowercase, number)
+                firstName:
+                  type: string
+                  example: John
+                  description: User's first name
+                lastName:
+                  type: string
+                  example: Doe
+                  description: User's last name
+      responses:
+        '200':
+          description: Signup initiated successfully, OTP sent to email
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Verification email sent. Please check your inbox.
+                  userId:
+                    type: string
+                    format: uuid
+                    example: 123e4567-e89b-12d3-a456-426614174000
+                  email:
+                    type: string
+                    example: user@example.com
+        '400':
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missingFields:
+                  value:
+                    error: Email and password are required
+                weakPassword:
+                  value:
+                    error: Password must be at least 8 characters
+                passwordRequirements:
+                  value:
+                    error: Password must contain uppercase, lowercase, and number
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: User already exists. Please sign in.
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth-handler/verify-otp:
+    post:
+      tags:
+        - Authentication
+      summary: Verify OTP and complete signup
+      description: |
+        Verifies the OTP code sent to user's email and completes the signup process.
+        Creates user profile and returns session tokens.
+      operationId: verifyOtp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - token
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                token:
+                  type: string
+                  example: "123456"
+                  description: 6-digit OTP code from email
+                type:
+                  type: string
+                  enum: [signup, recovery]
+                  default: signup
+                  example: signup
+      responses:
+        '200':
+          description: OTP verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Email verified successfully
+                  user:
+                    $ref: '#/components/schemas/User'
+                  session:
+                    $ref: '#/components/schemas/Session'
+        '400':
+          description: Invalid OTP or verification failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth-handler/resend-otp:
+    post:
+      tags:
+        - Authentication
+      summary: Resend OTP email
+      description: Resends the OTP verification email if the previous one expired or was not received
+      operationId: resendOtp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                type:
+                  type: string
+                  enum: [signup, recovery]
+                  default: signup
+                  example: signup
+      responses:
+        '200':
+          description: OTP resent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Verification email resent successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth-handler/signin:
+    post:
+      tags:
+        - Authentication
+      summary: Email/password signin
+      description: |
+        Authenticates user with email and password.
+        Email must be verified before signin is allowed.
+      operationId: signin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  format: password
+                  example: Test1234
+      responses:
+        '200':
+          description: Signed in successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Signed in successfully
+                  user:
+                    $ref: '#/components/schemas/User'
+                  session:
+                    $ref: '#/components/schemas/Session'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Email not verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Email not verified. Please check your inbox for verification email.
+
+  /auth-handler/reset-password:
+    post:
+      tags:
+        - Authentication
+      summary: Request password reset
+      description: Sends a password reset email with a reset link
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+      responses:
+        '200':
+          description: Password reset email sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Password reset email sent. Please check your inbox.
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth-handler/update-password:
+    post:
+      tags:
+        - Authentication
+      summary: Update password after reset
+      description: |
+        Updates user's password using the reset token from email.
+        Requires Authorization header with reset token.
+      operationId: updatePassword
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - newPassword
+              properties:
+                newPassword:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: NewTest1234
+                  description: New password (min 8 chars, uppercase, lowercase, number)
+      responses:
+        '200':
+          description: Password updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Password updated successfully
+        '400':
+          description: Invalid password or validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - invalid or missing reset token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth-handler/signout:
+    post:
+      tags:
+        - Authentication
+      summary: Sign out user
+      description: Signs out the current user and invalidates their session
+      operationId: signout
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Signed out successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Signed out successfully
+        '401':
+          description: Unauthorized - invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /oauth-callback:
+    get:
+      tags:
+        - OAuth
+      summary: OAuth callback handler
+      description: |
+        Handles OAuth callbacks from Google and Apple.
+        This endpoint is called automatically by the OAuth provider.
+        Creates user profile if it's a new user.
+      operationId: oauthCallback
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Authorization code from OAuth provider
+      responses:
+        '302':
+          description: Redirect to mobile app with session tokens
+          headers:
+            Location:
+              schema:
+                type: string
+                example: yourapp://auth/callback?access_token=...&refresh_token=...
+        '400':
+          description: Bad request - missing or invalid code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Supabase publishable key or user access token.
+        
+        For most endpoints, use your publishable key:
+        ```
+        Authorization: Bearer sb_publishable_your-key-here
+        ```
+        
+        For authenticated endpoints (signout, update-password), use the user's access token from signin/verify-otp response.
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 123e4567-e89b-12d3-a456-426614174000
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        emailConfirmed:
+          type: boolean
+          example: true
+
+    Session:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT access token for authenticated requests
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refresh_token:
+          type: string
+          description: Refresh token to get new access token
+          example: v1.MRjHYW...
+        expires_in:
+          type: integer
+          description: Token expiry time in seconds
+          example: 3600
+        token_type:
+          type: string
+          example: bearer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Invalid credentials
+
+  examples:
+    SignupRequest:
+      value:
+        email: john.doe@example.com
+        password: SecurePass123
+        fullName: John Doe
+
+    SignupResponse:
+      value:
+        success: true
+        message: Verification email sent. Please check your inbox.
+        userId: 123e4567-e89b-12d3-a456-426614174000
+        email: john.doe@example.com
+
+    VerifyOtpRequest:
+      value:
+        email: john.doe@example.com
+        token: "123456"
+        type: signup
+
+    SigninRequest:
+      value:
+        email: john.doe@example.com
+        password: SecurePass123
+
+    SigninResponse:
+      value:
+        success: true
+        message: Signed in successfully
+        user:
+          id: 123e4567-e89b-12d3-a456-426614174000
+          email: john.doe@example.com
+          emailConfirmed: true
+        session:
+          access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+          refresh_token: v1.MRjHYW...
+          expires_in: 3600
+          token_type: bearer
+
+security:
+  - BearerAuth: []
