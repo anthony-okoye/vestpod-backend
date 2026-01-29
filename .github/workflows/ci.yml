@@ -69,7 +69,7 @@ jobs:
       - name: Validate OpenAPI Specification
         run: |
           echo "🔍 Validating OpenAPI spec..."
-          swagger-cli validate backend/openapi.yaml
+          swagger-cli validate openapi.yaml
           echo "✅ OpenAPI spec is valid!"
 
   test-api:

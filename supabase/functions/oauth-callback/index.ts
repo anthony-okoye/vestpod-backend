@@ -57,16 +57,16 @@ async function createUserProfile(userId: string, email: string, fullName?: strin
 
     console.log("User profile created successfully:", userId);
     return data;
-  } catch (error) {
-    console.error("Failed to create user profile:", error);
-    throw error;
+  } catch (_error) {
+    console.error("Failed to create user profile:", _error);
+    throw _error;
   }
 }
 
 /**
  * Send JSON response
  */
-function jsonResponse(data: any, status = 200) {
+function jsonResponse(data: Record<string, unknown> | { error: string } | { success: boolean; [key: string]: unknown }, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -131,8 +131,8 @@ serve(async (req: Request) => {
         Location: redirectUrl,
       },
     });
-  } catch (error) {
-    console.error("OAuth callback handler error:", error);
+  } catch (_error) {
+    console.error("OAuth callback handler error:", _error);
     return errorResponse("Internal server error", 500);
   }
 });

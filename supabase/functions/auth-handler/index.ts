@@ -41,7 +41,7 @@ async function verifyJWT(token: string) {
     }
     
     return user;
-  } catch (error) {
+  } catch (_error) {
     throw new Error("Invalid or expired token");
   }
 }
@@ -77,7 +77,7 @@ async function createUserProfile(userId: string, email: string, firstName?: stri
 /**
  * Send JSON response
  */
-function jsonResponse(data: any, status = 200) {
+function jsonResponse(data: Record<string, unknown> | { error: string } | { success: boolean; [key: string]: unknown }, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -178,7 +178,7 @@ async function handleVerifyOTP(req: Request) {
     const { data, error } = await supabase.auth.verifyOtp({
       email,
       token,
-      type: type as any,
+      type: type as "signup" | "recovery" | "email",
     });
 
     if (error) {
@@ -217,8 +217,8 @@ async function handleVerifyOTP(req: Request) {
       },
       session: data.session,
     });
-  } catch (error) {
-    console.error("Verify OTP handler error:", error);
+  } catch (_error) {
+    console.error("Verify OTP handler error:", _error);
     return errorResponse("Internal server error", 500);
   }
 }
@@ -237,7 +237,7 @@ async function handleResendOTP(req: Request) {
 
     // Resend OTP
     const { error } = await supabase.auth.resend({
-      type: type as any,
+      type: type as "signup" | "email_change",
       email,
     });
 
@@ -250,8 +250,8 @@ async function handleResendOTP(req: Request) {
       success: true,
       message: "Verification email resent successfully",
     });
-  } catch (error) {
-    console.error("Resend OTP handler error:", error);
+  } catch (_error) {
+    console.error("Resend OTP handler error:", _error);
     return errorResponse("Internal server error", 500);
   }
 }
@@ -355,7 +355,7 @@ async function handleUpdatePassword(req: Request) {
     // Verify JWT token
     try {
       await verifyJWT(token);
-    } catch (error) {
+    } catch (_error) {
       return errorResponse("Invalid or expired token", 401);
     }
 
@@ -386,7 +386,7 @@ async function handleUpdatePassword(req: Request) {
     });
 
     // Update password
-    const { data, error } = await userSupabase.auth.updateUser({
+    const { error } = await userSupabase.auth.updateUser({
       password: newPassword,
     });
 
@@ -399,8 +399,8 @@ async function handleUpdatePassword(req: Request) {
       success: true,
       message: "Password updated successfully",
     });
-  } catch (error) {
-    console.error("Update password handler error:", error);
+  } catch (_error) {
+    console.error("Update password handler error:", _error);
     return errorResponse("Internal server error", 500);
   }
 }
@@ -421,7 +421,7 @@ async function handleSignout(req: Request) {
     // Verify JWT token
     try {
       await verifyJWT(token);
-    } catch (error) {
+    } catch (_error) {
       return errorResponse("Invalid or expired token", 401);
     }
 

@@ -31,7 +31,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 /**
  * Send JSON response
  */
-function jsonResponse(data: any, status = 200) {
+function jsonResponse(data: Record<string, unknown> | { error: string } | { success: boolean; [key: string]: unknown }, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
