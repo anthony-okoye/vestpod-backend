@@ -461,4 +461,4 @@ We provide multiple ways to test the API:
 For issues or questions:
 1. Check Supabase [Discord](https://discord.supabase.com/)
 2. Review [GitHub Issues](https://github.com/supabase/supabase/issues)
-3. Consult project requirements document 
+3. Consult project requirements document
