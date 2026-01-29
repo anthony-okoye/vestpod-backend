@@ -35,6 +35,12 @@ jobs:
           cd supabase/functions
           echo "🔍 Linting Edge Functions..."
           for dir in */; do
+            # Skip _shared directory (it's a module, not an Edge Function)
+            if [ "${dir}" = "_shared/" ]; then
+              echo "Linting ${dir}..."
+              deno lint "${dir}" || exit 1
+              continue
+            fi
             echo "Linting ${dir}..."
             deno lint "${dir}" || exit 1
           done
@@ -45,6 +51,11 @@ jobs:
           cd supabase/functions
           echo "🔍 Type checking Edge Functions..."
           for dir in */; do
+            # Skip _shared directory (it's a module, not an Edge Function)
+            if [ "${dir}" = "_shared/" ]; then
+              echo "Skipping ${dir} (shared module, not an Edge Function)"
+              continue
+            fi
             echo "Type checking ${dir}..."
             deno check "${dir}index.ts" || exit 1
           done
