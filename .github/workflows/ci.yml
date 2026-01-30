@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - '*'
+      - '**'
       - '.github/workflows/**'
 
   push:
@@ -13,7 +13,7 @@ on:
       - main
       - dev
     paths:
-      - '*'
+      - '**'
       - '.github/workflows/**'
 
 jobs:
