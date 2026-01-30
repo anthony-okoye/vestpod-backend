@@ -173,13 +173,19 @@ supabase functions deploy portfolio-handler
 - GET `/stock-price-handler/historical/:symbol` - Get historical data
 - POST `/stock-price-handler/batch` - Get batch quotes
 
+**asset-handler** - Asset CRUD operations
+- POST `/asset-handler/create` - Create new asset (listed or non-listed)
+- GET `/asset-handler/list?portfolio_id={id}` - List all assets in portfolio
+- GET `/asset-handler/:id` - Get single asset details
+- PUT `/asset-handler/:id` - Update asset
+- DELETE `/asset-handler/:id` - Delete asset
+
 ### Pending Functions
 
 Functions to be implemented in subsequent tasks:
 
 ```
 backend/functions/
-├── asset-crud/
 ├── price-updater/
 ├── alert-checker/
 ├── ai-insights/
@@ -350,11 +356,12 @@ SELECT * FROM portfolios;
 5. ✅ CI/CD pipeline configured
 6. ✅ Stock Price API Integration (Task 5) - Massive.com/Polygon.io
 7. ✅ Backup Stock API Integration (Task 6) - Alpha Vantage with automatic fallback
-8. ⏳ Integrate Cryptocurrency API (Task 7) - CoinGecko
-9. ⏳ Integrate Commodities API (Task 8) - Metals-API
-10. ⏳ Integrate Forex API (Task 9) - ExchangeRate-API
-11. ⏳ Implement Asset Management (Task 11)
-12. ⏳ Implement remaining Edge Functions (Tasks 12-28)
+8. ✅ Integrate Cryptocurrency API (Task 7) - CoinGecko
+9. ✅ Integrate Commodities API (Task 8) - Metals-API
+10. ✅ Integrate Forex API (Task 9) - ExchangeRate-API
+11. ✅ Implement Asset CRUD Operations (Task 11) - Listed and non-listed assets
+12. ⏳ Implement Automated Price Update Job (Task 12)
+13. ⏳ Implement remaining Edge Functions (Tasks 13-28)
 
 ## CI/CD Pipeline
 
