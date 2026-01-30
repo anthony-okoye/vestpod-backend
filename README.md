@@ -168,6 +168,11 @@ supabase functions deploy oauth-callback
 supabase functions deploy portfolio-handler
 ```
 
+**stock-price-handler** - Stock price API integration
+- GET `/stock-price-handler/quote/:symbol` - Get current stock quote
+- GET `/stock-price-handler/historical/:symbol` - Get historical data
+- POST `/stock-price-handler/batch` - Get batch quotes
+
 ### Pending Functions
 
 Functions to be implemented in subsequent tasks:
@@ -343,9 +348,13 @@ SELECT * FROM portfolios;
 3. ✅ Portfolio CRUD Operations implemented (Task 3)
 4. ✅ Swagger/OpenAPI documentation updated
 5. ✅ CI/CD pipeline configured
-6. ⏳ Integrate Financial APIs (Tasks 5-9)
-7. ⏳ Implement Asset Management (Task 11)
-8. ⏳ Implement remaining Edge Functions (Tasks 12-28)
+6. ✅ Stock Price API Integration (Task 5) - Massive.com/Polygon.io
+7. ✅ Backup Stock API Integration (Task 6) - Alpha Vantage with automatic fallback
+8. ⏳ Integrate Cryptocurrency API (Task 7) - CoinGecko
+9. ⏳ Integrate Commodities API (Task 8) - Metals-API
+10. ⏳ Integrate Forex API (Task 9) - ExchangeRate-API
+11. ⏳ Implement Asset Management (Task 11)
+12. ⏳ Implement remaining Edge Functions (Tasks 12-28)
 
 ## CI/CD Pipeline
 
@@ -455,6 +464,38 @@ We provide multiple ways to test the API:
 - [PostgreSQL Documentation](https://www.postgresql.org/docs/)
 - [Deno Documentation](https://deno.land/manual)
 - [Row Level Security Guide](https://supabase.com/docs/guides/auth/row-level-security)
+- [Polygon.io API Documentation](https://polygon.io/docs/stocks)
+
+## Financial API Integration
+
+### Stock Price API (Massive.com/Polygon.io)
+
+The stock price API client is implemented in `_shared/massive-client.ts` with:
+- ✅ Current stock quote fetching
+- ✅ Historical OHLC data fetching
+- ✅ Batch quote fetching
+- ✅ Automatic retry with exponential backoff
+- ✅ Rate limit handling
+
+**Documentation:** See `_shared/MASSIVE_API_README.md` for detailed usage
+
+**Testing:**
+```bash
+# Set API key
+export MASSIVE_API_KEY=your_polygon_api_key
+
+# Run test suite
+cd backend/supabase/functions/_shared
+deno run --allow-net --allow-env massive-client.test.ts
+```
+
+**Example Usage:**
+```typescript
+import { fetchStockQuote } from "../_shared/massive-client.ts";
+
+const quote = await fetchStockQuote("AAPL", apiKey);
+console.log(`AAPL: $${quote.price} (${quote.changePercent}%)`);
+```
 
 ## Support
 
