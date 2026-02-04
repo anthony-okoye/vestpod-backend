@@ -51,6 +51,20 @@ tags:
     description: OAuth provider callbacks
   - name: Portfolio
     description: Portfolio management operations
+  - name: Assets
+    description: Asset management operations (stocks, crypto, commodities, real estate)
+  - name: Alerts
+    description: Price alerts and notifications
+  - name: AI
+    description: AI-powered portfolio analysis and chat
+  - name: Subscriptions
+    description: Premium subscription management
+  - name: Profile
+    description: User profile and settings
+  - name: Data Export
+    description: Portfolio data export (CSV, JSON, PDF)
+  - name: Jobs
+    description: Background jobs (cron-triggered)
 
 paths:
   /auth-handler/signup:
@@ -860,6 +874,262 @@ components:
               example: 15
               description: Number of assets in portfolio
 
+    Asset:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        portfolioId:
+          type: string
+          format: uuid
+        assetType:
+          type: string
+          enum: [stock, crypto, commodity, real_estate, fixed_income, other]
+          example: stock
+        symbol:
+          type: string
+          example: AAPL
+          nullable: true
+        name:
+          type: string
+          example: Apple Inc.
+        quantity:
+          type: number
+          example: 10
+        purchasePrice:
+          type: number
+          example: 150.00
+        currentPrice:
+          type: number
+          example: 175.00
+        totalValue:
+          type: number
+          example: 1750.00
+        gainLoss:
+          type: number
+          example: 250.00
+        gainLossPercent:
+          type: number
+          example: 16.67
+        purchaseDate:
+          type: string
+          format: date
+          example: 2024-01-01
+        createdAt:
+          type: string
+          format: date-time
+
+    AssetDetail:
+      allOf:
+        - $ref: '#/components/schemas/Asset'
+        - type: object
+          properties:
+            priceHistory:
+              type: array
+              items:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                    format: date-time
+                  price:
+                    type: number
+
+    ListedAssetCreate:
+      type: object
+      required:
+        - portfolioId
+        - assetType
+        - symbol
+        - quantity
+        - purchasePrice
+        - purchaseDate
+      properties:
+        portfolioId:
+          type: string
+          format: uuid
+        assetType:
+          type: string
+          enum: [stock, crypto, commodity]
+        symbol:
+          type: string
+          example: AAPL
+        quantity:
+          type: number
+          example: 10
+        purchasePrice:
+          type: number
+          example: 150.00
+        purchaseDate:
+          type: string
+          format: date
+          example: 2024-01-01
+
+    NonListedAssetCreate:
+      type: object
+      required:
+        - portfolioId
+        - assetType
+        - name
+        - currentValue
+        - purchaseDate
+      properties:
+        portfolioId:
+          type: string
+          format: uuid
+        assetType:
+          type: string
+          enum: [real_estate, fixed_income, other]
+        name:
+          type: string
+          example: Downtown Apartment
+        currentValue:
+          type: number
+          example: 500000
+        purchasePrice:
+          type: number
+          example: 450000
+        purchaseDate:
+          type: string
+          format: date
+        maturityDate:
+          type: string
+          format: date
+          nullable: true
+          description: For fixed income assets
+        address:
+          type: string
+          nullable: true
+          description: For real estate assets
+
+    Alert:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        assetId:
+          type: string
+          format: uuid
+        alertType:
+          type: string
+          enum: [price_target, percentage_change, maturity_reminder]
+        condition:
+          type: object
+          description: Alert condition parameters
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+
+    AlertCreate:
+      type: object
+      required:
+        - assetId
+        - alertType
+        - condition
+      properties:
+        assetId:
+          type: string
+          format: uuid
+        alertType:
+          type: string
+          enum: [price_target, percentage_change, maturity_reminder]
+          example: price_target
+        condition:
+          type: object
+          properties:
+            targetPrice:
+              type: number
+              example: 200.00
+              description: For price_target alerts
+            percentageChange:
+              type: number
+              example: 10
+              description: For percentage_change alerts
+            daysBeforeMaturity:
+              type: integer
+              example: 30
+              description: For maturity_reminder alerts
+
+    PortfolioAnalysis:
+      type: object
+      properties:
+        portfolioId:
+          type: string
+          format: uuid
+        riskScore:
+          type: number
+          example: 6.5
+          description: Risk score from 0 (low) to 10 (high)
+        geographicExposure:
+          type: object
+          additionalProperties:
+            type: number
+          example:
+            US: 60
+            EU: 25
+            ASIA: 15
+        sectorExposure:
+          type: object
+          additionalProperties:
+            type: number
+          example:
+            Technology: 45
+            Finance: 30
+            Healthcare: 25
+        recommendations:
+          type: array
+          items:
+            type: string
+          example:
+            - "Consider reducing US exposure (currently 60%)"
+            - "Technology sector is overweight at 45%"
+        generatedAt:
+          type: string
+          format: date-time
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+          example: John
+        lastName:
+          type: string
+          example: Doe
+        phone:
+          type: string
+          nullable: true
+        avatarUrl:
+          type: string
+          nullable: true
+        currency:
+          type: string
+          example: USD
+        language:
+          type: string
+          example: en
+        isPremium:
+          type: boolean
+          example: false
+        subscriptionStatus:
+          type: string
+          enum: [active, inactive, trial, expired]
+          example: inactive
+        createdAt:
+          type: string
+          format: date-time
+
   examples:
     SignupRequest:
       value:
@@ -901,3 +1171,666 @@ components:
 
 security:
   - BearerAuth: []
+
+  /asset-handler/create:
+    post:
+      tags:
+        - Assets
+      summary: Create a new asset
+      description: |
+        Creates a new asset (listed or non-listed) in a portfolio.
+        
+        **Listed Assets:** Stocks, crypto, commodities with ticker symbols
+        **Non-Listed Assets:** Real estate, fixed income, private investments
+      operationId: createAsset
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/ListedAssetCreate'
+                - $ref: '#/components/schemas/NonListedAssetCreate'
+      responses:
+        '201':
+          description: Asset created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Asset created successfully
+                  asset:
+                    $ref: '#/components/schemas/Asset'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /asset-handler/list:
+    get:
+      tags:
+        - Assets
+      summary: List all assets in a portfolio
+      description: Returns all assets for a specific portfolio with current prices and performance
+      operationId: listAssets
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: portfolio_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Portfolio ID
+      responses:
+        '200':
+          description: Assets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  assets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Asset'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /asset-handler/{id}:
+    get:
+      tags:
+        - Assets
+      summary: Get asset details
+      description: Returns detailed information about a specific asset
+      operationId: getAsset
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Asset retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  asset:
+                    $ref: '#/components/schemas/AssetDetail'
+        '404':
+          description: Asset not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Assets
+      summary: Update asset
+      description: Updates asset quantity, purchase price, or other details
+      operationId: updateAsset
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                quantity:
+                  type: number
+                  example: 15
+                purchasePrice:
+                  type: number
+                  example: 155.50
+                currentValue:
+                  type: number
+                  example: 50000
+                  description: For non-listed assets only
+      responses:
+        '200':
+          description: Asset updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Asset updated successfully
+                  asset:
+                    $ref: '#/components/schemas/Asset'
+
+    delete:
+      tags:
+        - Assets
+      summary: Delete asset
+      description: Removes an asset from the portfolio
+      operationId: deleteAsset
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Asset deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Asset deleted successfully
+
+  /alert-handler/create:
+    post:
+      tags:
+        - Alerts
+      summary: Create price alert
+      description: |
+        Creates a new price alert for an asset.
+        
+        **Alert Types:**
+        - `price_target`: Triggers when price reaches target
+        - `percentage_change`: Triggers on % change
+        - `maturity_reminder`: Triggers before maturity date
+        
+        **Free users:** Limited to 3 active alerts
+        **Premium users:** Unlimited alerts
+      operationId: createAlert
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertCreate'
+      responses:
+        '201':
+          description: Alert created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Alert created successfully
+                  alert:
+                    $ref: '#/components/schemas/Alert'
+        '403':
+          description: Alert limit reached (free users)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Free users are limited to 3 alerts. Upgrade to premium for unlimited alerts.
+
+  /alert-handler/list:
+    get:
+      tags:
+        - Alerts
+      summary: List all alerts
+      description: Returns all active alerts for the authenticated user
+      operationId: listAlerts
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Alerts retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  alerts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Alert'
+
+  /alert-handler/{id}:
+    delete:
+      tags:
+        - Alerts
+      summary: Delete alert
+      description: Removes an alert
+      operationId: deleteAlert
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Alert deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Alert deleted successfully
+
+  /portfolio-analysis:
+    post:
+      tags:
+        - AI
+      summary: Analyze portfolio with AI
+      description: |
+        Generates AI-powered portfolio analysis including:
+        - Risk score (0-10)
+        - Geographic exposure
+        - Sector exposure
+        - Diversification recommendations
+        
+        **Premium feature only**
+      operationId: analyzePortfolio
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - portfolio_id
+              properties:
+                portfolio_id:
+                  type: string
+                  format: uuid
+                  example: 123e4567-e89b-12d3-a456-426614174000
+      responses:
+        '200':
+          description: Analysis completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  analysis:
+                    $ref: '#/components/schemas/PortfolioAnalysis'
+        '403':
+          description: Premium feature only
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: This feature requires a premium subscription
+
+  /ai-chat-handler:
+    post:
+      tags:
+        - AI
+      summary: Chat with AI assistant
+      description: |
+        Send a message to the AI portfolio assistant.
+        The AI has context about your portfolio and can answer questions.
+        
+        **Premium feature only**
+      operationId: chatWithAI
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - message
+              properties:
+                message:
+                  type: string
+                  example: What is my portfolio's risk level?
+                portfolio_id:
+                  type: string
+                  format: uuid
+                  description: Optional portfolio context
+      responses:
+        '200':
+          description: AI response generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  response:
+                    type: string
+                    example: Your portfolio has a moderate risk level of 6/10...
+                  suggestions:
+                    type: array
+                    items:
+                      type: string
+                    example: ["Tell me about diversification", "What are my top performers?"]
+        '403':
+          description: Premium feature only
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /data-export:
+    post:
+      tags:
+        - Data Export
+      summary: Export portfolio data
+      description: |
+        Exports portfolio data in CSV, JSON, or PDF format.
+        
+        **Premium feature only**
+      operationId: exportData
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - format
+              properties:
+                format:
+                  type: string
+                  enum: [csv, json, pdf]
+                  example: csv
+                portfolio_id:
+                  type: string
+                  format: uuid
+                  description: Optional - exports specific portfolio, otherwise all portfolios
+      responses:
+        '200':
+          description: Export generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  downloadUrl:
+                    type: string
+                    example: https://storage.supabase.co/exports/portfolio_2024.csv
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    example: 2024-01-16T10:30:00Z
+        '403':
+          description: Premium feature only
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /profile-handler:
+    get:
+      tags:
+        - Profile
+      summary: Get user profile
+      description: Returns the authenticated user's profile information
+      operationId: getProfile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  profile:
+                    $ref: '#/components/schemas/UserProfile'
+
+    put:
+      tags:
+        - Profile
+      summary: Update user profile
+      description: Updates user profile information
+      operationId: updateProfile
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName:
+                  type: string
+                  example: John
+                lastName:
+                  type: string
+                  example: Doe
+                phone:
+                  type: string
+                  example: +1234567890
+                currency:
+                  type: string
+                  example: USD
+                language:
+                  type: string
+                  example: en
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Profile updated successfully
+                  profile:
+                    $ref: '#/components/schemas/UserProfile'
+
+  /profile-handler/avatar:
+    post:
+      tags:
+        - Profile
+      summary: Upload profile avatar
+      description: Uploads a new profile avatar image
+      operationId: uploadAvatar
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Image file (JPEG, PNG, max 5MB)
+      responses:
+        '200':
+          description: Avatar uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  avatarUrl:
+                    type: string
+                    example: https://storage.supabase.co/avatars/user123.jpg
+
+  /account-deletion:
+    post:
+      tags:
+        - Profile
+      summary: Delete user account
+      description: |
+        Permanently deletes the user account and all associated data.
+        This action cannot be undone.
+      operationId: deleteAccount
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - confirmation
+              properties:
+                confirmation:
+                  type: string
+                  example: DELETE
+                  description: Must be exactly "DELETE" to confirm
+      responses:
+        '200':
+          description: Account deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Account deleted successfully
+        '400':
+          description: Invalid confirmation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Please type DELETE to confirm account deletion
+
+  /revenuecat-webhook:
+    post:
+      tags:
+        - Subscriptions
+      summary: RevenueCat webhook handler
+      description: |
+        Handles subscription events from RevenueCat.
+        This endpoint is called automatically by RevenueCat.
+        
+        **Events handled:**
+        - INITIAL_PURCHASE
+        - RENEWAL
+        - CANCELLATION
+        - EXPIRATION
+      operationId: revenuecatWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: RevenueCat webhook payload
+      responses:
+        '200':
+          description: Webhook processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400':
+          description: Invalid webhook signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

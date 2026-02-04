@@ -13,8 +13,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { authenticateRequest } from "../_shared/auth.ts";
 import { fetchStockQuote, MassiveAPIError } from "../_shared/massive-client.ts";
-import { fetchCryptoQuoteBySymbol, CoinGeckoAPIError } from "../_shared/coingecko-client.ts";
-import { fetchCommodityQuote, MetalsAPIError, CommoditySymbol } from "../_shared/metals-api-client.ts";
+import { fetchCryptoQuoteBySymbol, CoinCapAPIError } from "../_shared/coincap-client.ts";
+import { fetchCommodityQuote, GoldAPIError, CommoditySymbol } from "../_shared/goldapi-client.ts";
 
 // CORS headers for mobile app
 const corsHeaders = {
@@ -28,10 +28,8 @@ const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// API keys for price fetching
+// API keys for price fetching (only Massive API requires a key)
 const massiveApiKey = Deno.env.get("MASSIVE_API_KEY") || "";
-const coinGeckoApiKey = Deno.env.get("COINGECKO_API_KEY") || "";
-const metalsApiKey = Deno.env.get("METALS_API_KEY") || "";
 
 // Valid asset types
 const ASSET_TYPES = ["stock", "crypto", "commodity", "real_estate", "fixed_income", "other"] as const;
@@ -85,14 +83,14 @@ async function fetchAssetPrice(assetType: AssetType, symbol: string): Promise<nu
       const quote = await fetchStockQuote(symbol, massiveApiKey);
       return quote.price;
     } else if (assetType === "crypto") {
-      const quote = await fetchCryptoQuoteBySymbol(symbol, coinGeckoApiKey);
+      const quote = await fetchCryptoQuoteBySymbol(symbol);
       return quote.price;
     } else if (assetType === "commodity") {
       const commoditySymbol = symbol.toUpperCase() as CommoditySymbol;
       if (!["XAU", "XAG", "XPT", "XPD"].includes(commoditySymbol)) {
         return null;
       }
-      const quote = await fetchCommodityQuote(commoditySymbol, metalsApiKey);
+      const quote = await fetchCommodityQuote(commoditySymbol);
       return quote.price;
     }
     return null;
@@ -119,7 +117,7 @@ async function validateListedAsset(assetType: AssetType, symbol: string): Promis
 
     return { valid: true, price };
   } catch (error) {
-    if (error instanceof MassiveAPIError || error instanceof CoinGeckoAPIError || error instanceof MetalsAPIError) {
+    if (error instanceof MassiveAPIError || error instanceof CoinCapAPIError || error instanceof GoldAPIError) {
       return {
         valid: false,
         error: `Unable to validate ${assetType} symbol: ${symbol}. ${error.message}`,

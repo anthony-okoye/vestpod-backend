@@ -21,13 +21,13 @@ import {
 } from "../_shared/alphavantage-client.ts";
 import {
   fetchBatchQuotesBySymbols as fetchCryptoBatch,
-  CoinGeckoAPIError,
-} from "../_shared/coingecko-client.ts";
+  CoinCapAPIError,
+} from "../_shared/coincap-client.ts";
 import {
   fetchBatchQuotes as fetchCommodityBatch,
   CommoditySymbol,
-  MetalsAPIError,
-} from "../_shared/metals-api-client.ts";
+  GoldAPIError,
+} from "../_shared/goldapi-client.ts";
 
 // CORS headers
 const corsHeaders = {
@@ -209,8 +209,7 @@ async function updateStockPrices(
  * Fetch and update cryptocurrency prices
  */
 async function updateCryptoPrices(
-  assets: Asset[],
-  coingeckoApiKey?: string
+  assets: Asset[]
 ): Promise<PriceUpdateResult[]> {
   const results: PriceUpdateResult[] = [];
   const symbols = assets.map((a) => a.symbol!).filter((s) => s);
@@ -220,7 +219,7 @@ async function updateCryptoPrices(
   }
 
   try {
-    const cryptoResults = await fetchCryptoBatch(symbols, coingeckoApiKey);
+    const cryptoResults = await fetchCryptoBatch(symbols);
 
     for (const asset of assets) {
       const result = cryptoResults.get(asset.symbol!);
@@ -231,7 +230,7 @@ async function updateCryptoPrices(
           symbol: asset.symbol!,
           old_price: asset.current_price,
           new_price: 0,
-          source: "coingecko",
+          source: "coincap",
           success: false,
           error: result.message,
         });
@@ -241,13 +240,13 @@ async function updateCryptoPrices(
           symbol: asset.symbol!,
           old_price: asset.current_price,
           new_price: (result as { price: number }).price,
-          source: "coingecko",
+          source: "coincap",
           success: true,
         });
       }
     }
   } catch (error) {
-    console.error("CoinGecko batch failed:", error);
+    console.error("CoinCap batch failed:", error);
     
     // Mark all as failed
     for (const asset of assets) {
@@ -256,7 +255,7 @@ async function updateCryptoPrices(
         symbol: asset.symbol!,
         old_price: asset.current_price,
         new_price: 0,
-        source: "coingecko",
+        source: "coincap",
         success: false,
         error: (error as Error).message,
       });
@@ -270,8 +269,7 @@ async function updateCryptoPrices(
  * Fetch and update commodity prices
  */
 async function updateCommodityPrices(
-  assets: Asset[],
-  metalsApiKey: string
+  assets: Asset[]
 ): Promise<PriceUpdateResult[]> {
   const results: PriceUpdateResult[] = [];
   const symbols = assets.map((a) => a.symbol! as CommoditySymbol).filter((s) => s);
@@ -281,7 +279,7 @@ async function updateCommodityPrices(
   }
 
   try {
-    const commodityResults = await fetchCommodityBatch(symbols, metalsApiKey);
+    const commodityResults = await fetchCommodityBatch(symbols);
 
     for (const asset of assets) {
       const result = commodityResults.get(asset.symbol! as CommoditySymbol);
@@ -292,7 +290,7 @@ async function updateCommodityPrices(
           symbol: asset.symbol!,
           old_price: asset.current_price,
           new_price: 0,
-          source: "metals-api",
+          source: "goldapi",
           success: false,
           error: result.message,
         });
@@ -302,13 +300,13 @@ async function updateCommodityPrices(
           symbol: asset.symbol!,
           old_price: asset.current_price,
           new_price: (result as { price: number }).price,
-          source: "metals-api",
+          source: "goldapi",
           success: true,
         });
       }
     }
   } catch (error) {
-    console.error("Metals-API batch failed:", error);
+    console.error("Gold-API batch failed:", error);
     
     // Mark all as failed
     for (const asset of assets) {
@@ -317,7 +315,7 @@ async function updateCommodityPrices(
         symbol: asset.symbol!,
         old_price: asset.current_price,
         new_price: 0,
-        source: "metals-api",
+        source: "goldapi",
         success: false,
         error: (error as Error).message,
       });
@@ -443,8 +441,6 @@ async function processUserPriceUpdates(
   apiKeys: {
     massive: string;
     alphaVantage: string;
-    coingecko?: string;
-    metalsApi: string;
   }
 ) {
   // Fetch all listed assets for this user
@@ -481,12 +477,12 @@ async function processUserPriceUpdates(
   }
 
   if (cryptoAssets.length > 0) {
-    const cryptoResults = await updateCryptoPrices(cryptoAssets, apiKeys.coingecko);
+    const cryptoResults = await updateCryptoPrices(cryptoAssets);
     allResults.push(...cryptoResults);
   }
 
   if (commodityAssets.length > 0) {
-    const commodityResults = await updateCommodityPrices(commodityAssets, apiKeys.metalsApi);
+    const commodityResults = await updateCommodityPrices(commodityAssets);
     allResults.push(...commodityResults);
   }
 
@@ -522,14 +518,13 @@ serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const massiveApiKey = Deno.env.get("MASSIVE_API_KEY");
     const alphaVantageApiKey = Deno.env.get("ALPHA_VANTAGE_API_KEY");
-    const coingeckoApiKey = Deno.env.get("COINGECKO_API_KEY");
-    const metalsApiKey = Deno.env.get("METALS_API_KEY");
+    // Note: CoinCap and Gold-API don't require API keys
 
     if (!supabaseUrl || !supabaseServiceKey) {
       return jsonResponse({ error: "Supabase configuration missing" }, 500);
     }
 
-    if (!massiveApiKey || !alphaVantageApiKey || !metalsApiKey) {
+    if (!massiveApiKey || !alphaVantageApiKey) {
       return jsonResponse({ error: "API keys not configured" }, 500);
     }
 
@@ -549,8 +544,6 @@ serve(async (req: Request) => {
       const result = await processUserPriceUpdates(supabase, userId, {
         massive: massiveApiKey,
         alphaVantage: alphaVantageApiKey,
-        coingecko: coingeckoApiKey,
-        metalsApi: metalsApiKey,
       });
       results.push(result);
     }
