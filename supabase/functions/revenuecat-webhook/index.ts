@@ -116,13 +116,26 @@ function getUserId(appUserId: string): string {
 
 /**
  * Determine subscription tier from product ID
+ * Handles both production and RevenueCat Test Store product IDs
  */
 function getSubscriptionTier(productId: string): string | null {
-  if (productId.includes("monthly")) {
+  console.log(`[getSubscriptionTier] Analyzing product_id: ${productId}`);
+  
+  const lowerProductId = productId.toLowerCase();
+  
+  // Check for monthly patterns
+  if (lowerProductId.includes("monthly") || lowerProductId.includes("$rc_monthly")) {
+    console.log(`[getSubscriptionTier] Detected monthly tier`);
     return "monthly";
-  } else if (productId.includes("annual")) {
+  }
+  
+  // Check for annual patterns
+  if (lowerProductId.includes("annual") || lowerProductId.includes("$rc_annual")) {
+    console.log(`[getSubscriptionTier] Detected annual tier`);
     return "annual";
   }
+  
+  console.warn(`[getSubscriptionTier] Could not determine tier from product_id: ${productId}`);
   return null;
 }
 
@@ -143,6 +156,9 @@ function isTrialPeriod(periodType: string): boolean {
  */
 async function handleInitialPurchase(event: RevenueCatWebhookEvent["event"]) {
   console.log("Handling INITIAL_PURCHASE event:", event.app_user_id);
+  console.log("Product ID:", event.product_id);
+  console.log("Period type:", event.period_type);
+  console.log("Entitlement IDs:", event.entitlement_ids);
 
   const userId = getUserId(event.app_user_id);
   const tier = getSubscriptionTier(event.product_id);
@@ -182,7 +198,7 @@ async function handleInitialPurchase(event: RevenueCatWebhookEvent["event"]) {
     throw error;
   }
 
-  console.log(`Subscription activated for user ${userId} (${tier}, trial: ${isTrial})`);
+  console.log(`Subscription activated for user ${userId} (tier: ${tier}, trial: ${isTrial})`);
 }
 
 /**
