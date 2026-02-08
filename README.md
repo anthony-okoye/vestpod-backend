@@ -347,6 +347,26 @@ SELECT * FROM portfolios;
 - Check Supabase project is not paused (free tier)
 - Ensure IP is whitelisted (if using IP restrictions)
 
+## Multi-Modal AI Insights
+
+The Daily Insights Job now supports multi-modal portfolio analysis:
+
+**Features:**
+- Performance charts (30-day line chart)
+- Allocation charts (pie chart by asset)
+- Correlation heatmaps (asset correlation matrix)
+- Market benchmarks (S&P 500 comparison)
+- Macro indicators (VIX, Fed rate, CPI)
+- Sentiment analysis (news-based sentiment per asset)
+- Cost monitoring ($500/month threshold with automatic fallback to text-only)
+
+**API Requirements:**
+- `GEMINI_API_KEY` (required) - Google AI Studio
+- `NEWS_API_KEY` (optional) - NewsAPI.org for sentiment
+- `ALPHA_VANTAGE_API_KEY` (optional) - Alpha Vantage for market data
+
+**Documentation:** See `DAILY_INSIGHTS_JOB_README.md` for detailed usage
+
 ## Next Steps
 
 1. ✅ Database schema created
@@ -360,8 +380,8 @@ SELECT * FROM portfolios;
 9. ✅ Integrate Commodities API (Task 8) - Metals-API
 10. ✅ Integrate Forex API (Task 9) - ExchangeRate-API
 11. ✅ Implement Asset CRUD Operations (Task 11) - Listed and non-listed assets
-12. ⏳ Implement Automated Price Update Job (Task 12)
-13. ⏳ Implement remaining Edge Functions (Tasks 13-28)
+12. ✅ Multi-Modal AI Insights (Tasks 10-13) - Charts, market data, sentiment analysis with cost monitoring
+13. ⏳ Implement remaining Edge Functions (Tasks 14+)
 
 ## CI/CD Pipeline
 

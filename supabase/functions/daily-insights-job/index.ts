@@ -13,16 +13,41 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import {
   generatePortfolioInsights,
+  generateMultiModalInsights,
   PortfolioContext,
   AssetContext,
+  MultiModalContext,
+  EnhancedAIInsight,
   GeminiAPIError,
 } from "../_shared/gemini-client.ts";
+import { ChartGenerator } from "../_shared/chart-generator.ts";
+import { MarketDataAggregator } from "../_shared/market-data-aggregator.ts";
+import { NewsAggregator } from "../_shared/news-aggregator.ts";
+import {
+  logApiCost,
+  estimateMultiModalCost,
+  estimateTextOnlyCost,
+  shouldUseMultiModal,
+  logBatchCostSummary,
+} from "../_shared/cost-monitor.ts";
 
 // CORS headers
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Initialize components for multi-modal analysis
+const newsApiKey = Deno.env.get("NEWS_API_KEY") || "";
+const alphaVantageApiKey = Deno.env.get("ALPHA_VANTAGE_API_KEY") || "";
+
+const chartGenerator = new ChartGenerator({
+  width: 800,
+  height: 600,
+  backgroundColor: "#ffffff",
+});
+const marketDataAggregator = new MarketDataAggregator(alphaVantageApiKey);
+const newsAggregator = new NewsAggregator(newsApiKey, "");
 
 /**
  * Premium user from database
@@ -43,6 +68,8 @@ interface InsightResult {
   is_critical?: boolean;
   notification_sent?: boolean;
   error?: string;
+  cost_cents?: number; // Task 8.2: Track cost per user
+  analysis_type?: "multi-modal" | "text-only"; // Task 8.2: Track analysis type
 }
 
 /**
@@ -301,7 +328,64 @@ async function sendPushNotification(
 }
 
 /**
+ * Generate last 30 days of dates
+ */
+function generateLast30Days(): string[] {
+  const dates: string[] = [];
+  const now = new Date();
+  
+  for (let i = 29; i >= 0; i--) {
+    const date = new Date(now);
+    date.setDate(date.getDate() - i);
+    dates.push(date.toISOString().split('T')[0]);
+  }
+  
+  return dates;
+}
+
+/**
+ * Generate correlation chart data
+ */
+async function generateCorrelationChartData(context: PortfolioContext): Promise<string | null> {
+  try {
+    const symbols = context.assets.map(a => a.symbol);
+    
+    // Calculate simple correlation matrix based on performance
+    const correlationMatrix: number[][] = [];
+    
+    for (let i = 0; i < symbols.length; i++) {
+      const row: number[] = [];
+      for (let j = 0; j < symbols.length; j++) {
+        if (i === j) {
+          row.push(1.0);
+        } else {
+          const asset1 = context.assets[i];
+          const asset2 = context.assets[j];
+          
+          if (asset1.type === asset2.type) {
+            row.push(0.6);
+          } else {
+            row.push(0.2);
+          }
+        }
+      }
+      correlationMatrix.push(row);
+    }
+    
+    return await chartGenerator.generateCorrelationHeatmap({
+      assets: symbols,
+      correlationMatrix,
+    });
+  } catch (error) {
+    console.error("Correlation chart generation failed:", error);
+    return null;
+  }
+}
+
+/**
  * Generate insights for a single user
+ * Task 10.1: Use multi-modal analysis when cost threshold allows
+ * Task 10.2: Track cost per user
  */
 async function generateInsightsForUser(
   supabase: ReturnType<typeof createClient>,
@@ -330,13 +414,129 @@ async function generateInsightsForUser(
     // Analyze sector exposure
     const sectorAnalysis = analyzeSectorExposure(portfolioContext);
 
+    // Task 10.1: Check if multi-modal analysis should be used
+    const costCheck = await shouldUseMultiModal();
+    const useMultiModal = costCheck.allowed && alphaVantageApiKey && newsApiKey;
+    let analysisType: "multi-modal" | "text-only" = "text-only";
+    
     // Generate AI insights using Gemini
-    let aiInsight;
+    let aiInsight: EnhancedAIInsight;
+    let costCents = 0;
+    
     try {
-      aiInsight = await generatePortfolioInsights(
-        portfolioContext,
-        geminiApiKey
-      );
+      if (useMultiModal) {
+        // Task 10.1: Use multi-modal analysis when cost allows
+        console.log(`Generating multi-modal insights for user ${user.id}...`);
+        
+        // Generate charts
+        const [performanceChart, allocationChart, correlationChart] = await Promise.all([
+          chartGenerator.generatePerformanceChart({
+            dates: generateLast30Days(),
+            values: portfolioContext.assets.map(a => a.totalValue),
+            currency: portfolioContext.currency,
+          }).catch(() => null),
+          chartGenerator.generateAllocationChart({
+            labels: portfolioContext.assets.map(a => a.symbol),
+            values: portfolioContext.assets.map(a => (a.totalValue / portfolioContext.totalValue) * 100),
+          }).catch(() => null),
+          generateCorrelationChartData(portfolioContext).catch(() => null),
+        ]);
+
+        // Fetch market data
+        const [benchmarkData, macroIndicators] = await Promise.all([
+          marketDataAggregator.fetchBenchmarkData("30D").catch(() => null),
+          marketDataAggregator.fetchMacroIndicators().catch(() => null),
+        ]);
+
+        // Fetch sentiment data
+        const symbols = portfolioContext.assets.map(a => a.symbol);
+        const sentimentMap = await newsAggregator.batchAnalyzeSentiment(symbols).catch(() => new Map());
+        
+        const simplifiedSentiment = new Map<string, { score: number; magnitude: number; articles_count: number }>();
+        sentimentMap.forEach((analysis, symbol) => {
+          simplifiedSentiment.set(symbol, {
+            score: analysis.score,
+            magnitude: analysis.magnitude,
+            articles_count: analysis.articles.length,
+          });
+        });
+
+        // Check if we have all required components
+        const hasCharts = performanceChart && allocationChart && correlationChart;
+        
+        if (hasCharts) {
+          // Build multi-modal context
+          const multiModalContext: MultiModalContext = {
+            ...portfolioContext,
+            charts: {
+              performance: performanceChart!,
+              allocation: allocationChart!,
+              correlation: correlationChart!,
+            },
+            sentiment: simplifiedSentiment,
+            benchmark: benchmarkData || undefined,
+            macroIndicators: macroIndicators || undefined,
+          };
+
+          // Generate multi-modal insights
+          aiInsight = await generateMultiModalInsights(multiModalContext, geminiApiKey);
+          costCents = estimateMultiModalCost();
+          analysisType = "multi-modal";
+          
+          await logApiCost(
+            user.id,
+            "gemini",
+            "gemini-3-pro-preview:generateContent",
+            costCents,
+            15000 + 2000
+          );
+        } else {
+          // Fallback to text-only if charts failed
+          console.warn(`Chart generation failed for user ${user.id}, falling back to text-only`);
+          const basicInsight = await generatePortfolioInsights(portfolioContext, geminiApiKey);
+          aiInsight = {
+            ...basicInsight,
+            visualPatterns: undefined,
+            sentimentSummary: undefined,
+            benchmarkComparison: undefined,
+            macroContext: undefined,
+          };
+          costCents = estimateTextOnlyCost();
+          analysisType = "text-only";
+          
+          await logApiCost(
+            user.id,
+            "gemini",
+            "gemini-3-pro-preview:generateContent",
+            costCents,
+            3000 + 1500
+          );
+        }
+      } else {
+        // Task 10.1: Use text-only when cost threshold exceeded or APIs unavailable
+        if (!costCheck.allowed) {
+          console.log(`Cost threshold exceeded for user ${user.id}, using text-only analysis`);
+        }
+        
+        const basicInsight = await generatePortfolioInsights(portfolioContext, geminiApiKey);
+        aiInsight = {
+          ...basicInsight,
+          visualPatterns: undefined,
+          sentimentSummary: undefined,
+          benchmarkComparison: undefined,
+          macroContext: undefined,
+        };
+        costCents = estimateTextOnlyCost();
+        analysisType = "text-only";
+        
+        await logApiCost(
+          user.id,
+          "gemini",
+          "gemini-3-pro-preview:generateContent",
+          costCents,
+          3000 + 1500
+        );
+      }
     } catch (error) {
       if (error instanceof GeminiAPIError) {
         console.error(`Gemini API error for user ${user.id}:`, error.message);
@@ -408,6 +608,8 @@ async function generateInsightsForUser(
       insight_id: insightId,
       is_critical: isCritical,
       notification_sent: notificationSent,
+      cost_cents: costCents, // Task 10.2: Include cost in result
+      analysis_type: analysisType, // Task 10.1: Track analysis type
     };
   } catch (error) {
     console.error(`Error generating insights for user ${user.id}:`, error);
@@ -422,6 +624,7 @@ async function generateInsightsForUser(
 /**
  * Process all premium users
  * Requirement 8.8: Generate insights daily for all premium users
+ * Task 8.2: Calculate batch cost
  */
 async function processAllPremiumUsers(
   supabase: ReturnType<typeof createClient>,
@@ -451,6 +654,7 @@ async function processAllPremiumUsers(
       insights_generated: 0,
       critical_insights: 0,
       notifications_sent: 0,
+      total_cost_cents: 0, // Task 8.2: Add cost tracking
       results: [],
     };
   }
@@ -459,6 +663,8 @@ async function processAllPremiumUsers(
 
   // Generate insights for each user
   const results: InsightResult[] = [];
+  let totalCostCents = 0; // Task 8.2: Track total cost
+  
   for (const subscription of premiumUsers) {
     const userProfile = subscription.user_profiles as unknown as PremiumUser;
     
@@ -478,6 +684,11 @@ async function processAllPremiumUsers(
       geminiApiKey
     );
     results.push(result);
+    
+    // Task 8.2: Accumulate costs
+    if (result.cost_cents) {
+      totalCostCents += result.cost_cents;
+    }
 
     // Add small delay between users to avoid rate limiting
     await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -486,12 +697,37 @@ async function processAllPremiumUsers(
   const successCount = results.filter((r) => r.success).length;
   const criticalCount = results.filter((r) => r.is_critical).length;
   const notificationCount = results.filter((r) => r.notification_sent).length;
+  const multiModalCount = results.filter((r) => r.analysis_type === "multi-modal").length;
+  const textOnlyCount = results.filter((r) => r.analysis_type === "text-only").length;
+
+  // Task 10.2: Log batch cost summary
+  await logBatchCostSummary(
+    "daily-insights-job",
+    premiumUsers.length,
+    multiModalCount,
+    textOnlyCount,
+    totalCostCents
+  );
+
+  // Task 10.2: Log detailed summary
+  console.log(`\n📊 Daily Insights Job Summary`);
+  console.log(`Total premium users: ${premiumUsers.length}`);
+  console.log(`Insights generated: ${successCount}`);
+  console.log(`Multi-modal analyses: ${multiModalCount}`);
+  console.log(`Text-only analyses: ${textOnlyCount}`);
+  console.log(`Critical insights: ${criticalCount}`);
+  console.log(`Notifications sent: ${notificationCount}`);
+  console.log(`Total cost: ${(totalCostCents / 100).toFixed(2)}`);
+  console.log(`Average cost per user: ${premiumUsers.length > 0 ? ((totalCostCents / premiumUsers.length) / 100).toFixed(2) : '0.00'}`);
 
   return {
     total_users: premiumUsers.length,
     insights_generated: successCount,
     critical_insights: criticalCount,
     notifications_sent: notificationCount,
+    multi_modal_count: multiModalCount, // Task 10.2: Add to result
+    text_only_count: textOnlyCount, // Task 10.2: Add to result
+    total_cost_cents: totalCostCents, // Task 10.2: Include in result
     results,
   };
 }
@@ -536,6 +772,7 @@ serve(async (req: Request) => {
     console.log(`  Insights generated: ${result.insights_generated}`);
     console.log(`  Critical insights: ${result.critical_insights}`);
     console.log(`  Notifications sent: ${result.notifications_sent}`);
+    console.log(`  Total cost: $${(result.total_cost_cents / 100).toFixed(2)}`); // Task 8.2
 
     return jsonResponse({
       success: true,

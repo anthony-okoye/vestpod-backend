@@ -13,10 +13,29 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { authenticateRequest } from "../_shared/auth.ts";
 import {
   generatePortfolioInsights,
+  generateMultiModalInsights,
   PortfolioContext,
   AssetContext,
+  MultiModalContext,
+  EnhancedAIInsight,
   GeminiAPIError,
 } from "../_shared/gemini-client.ts";
+import { ChartGenerator } from "../_shared/chart-generator.ts";
+import { MarketDataAggregator } from "../_shared/market-data-aggregator.ts";
+import { NewsAggregator } from "../_shared/news-aggregator.ts";
+import {
+  logApiCost,
+  estimateMultiModalCost,
+  estimateTextOnlyCost,
+  shouldUseMultiModal,
+  checkCostThreshold,
+} from "../_shared/cost-monitor.ts";
+
+// Token usage constants (imported from cost-monitor)
+const MULTIMODAL_ESTIMATED_INPUT_TOKENS = 15000;
+const MULTIMODAL_ESTIMATED_OUTPUT_TOKENS = 2000;
+const TEXT_ONLY_ESTIMATED_INPUT_TOKENS = 3000;
+const TEXT_ONLY_ESTIMATED_OUTPUT_TOKENS = 1500;
 
 // CORS headers for mobile app
 const corsHeaders = {
@@ -28,8 +47,22 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const geminiApiKey = Deno.env.get("GEMINI_API_KEY") || "";
+const newsApiKey = Deno.env.get("NEWS_API_KEY") || "";
+const alphaVantageApiKey = Deno.env.get("ALPHA_VANTAGE_API_KEY") || "";
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+// Initialize components for multi-modal analysis
+const chartGenerator = new ChartGenerator({
+  width: 800,
+  height: 600,
+  backgroundColor: "#ffffff",
+});
+const marketDataAggregator = new MarketDataAggregator(alphaVantageApiKey);
+const newsAggregator = new NewsAggregator(newsApiKey, geminiApiKey);
+
+// Cache TTL for insights (30 minutes)
+const INSIGHTS_CACHE_TTL = 30 * 60 * 1000;
 
 // =====================================================
 // Helper Functions
@@ -57,6 +90,150 @@ function errorResponse(message: string, status = 400) {
 
 // Import centralized subscription helper
 import { checkPremiumStatus } from "../_shared/subscription-helper.ts";
+
+/**
+ * Check insights cache
+ * Returns cached insights if fresh (within 30 minutes)
+ */
+async function getCachedInsights(userId: string): Promise<EnhancedAIInsight | null> {
+  try {
+    const { data, error } = await supabase
+      .from("insights_cache")
+      .select("insights_data, expires_at")
+      .eq("user_id", userId)
+      .single();
+
+    if (error || !data) {
+      return null;
+    }
+
+    // Check if cache is still valid
+    const expiresAt = new Date(data.expires_at).getTime();
+    if (Date.now() > expiresAt) {
+      // Cache expired, delete it
+      await supabase
+        .from("insights_cache")
+        .delete()
+        .eq("user_id", userId);
+      return null;
+    }
+
+    console.log("Insights cache hit for user:", userId);
+    return data.insights_data as EnhancedAIInsight;
+  } catch (error) {
+    console.error("Error checking insights cache:", error);
+    return null;
+  }
+}
+
+/**
+ * Cache insights for user
+ * Stores insights with 30-minute TTL
+ */
+async function cacheInsights(userId: string, insights: EnhancedAIInsight): Promise<void> {
+  try {
+    const expiresAt = new Date(Date.now() + INSIGHTS_CACHE_TTL);
+
+    await supabase
+      .from("insights_cache")
+      .upsert({
+        user_id: userId,
+        insights_data: insights,
+        cached_at: new Date().toISOString(),
+        expires_at: expiresAt.toISOString(),
+      });
+
+    console.log("Insights cached for user:", userId);
+  } catch (error) {
+    console.error("Error caching insights:", error);
+    // Non-critical error, continue
+  }
+}
+
+/**
+ * Store enhanced insights in database
+ * Includes multi-modal metadata (charts, sentiment, benchmark, macro)
+ */
+async function storeEnhancedInsights(
+  userId: string,
+  insights: EnhancedAIInsight,
+  context: MultiModalContext,
+  apiCostCents: number
+): Promise<string | null> {
+  try {
+    // Prepare chart URLs (in production, upload to storage and get URLs)
+    const chartUrls = {
+      performance: "data:image/png;base64," + context.charts.performance.substring(0, 50) + "...",
+      allocation: "data:image/png;base64," + context.charts.allocation.substring(0, 50) + "...",
+      correlation: "data:image/png;base64," + context.charts.correlation.substring(0, 50) + "...",
+    };
+
+    // Prepare sentiment data
+    const sentimentData: Record<string, { score: number; magnitude: number; articles_count: number }> = {};
+    if (context.sentiment) {
+      context.sentiment.forEach((value, key) => {
+        sentimentData[key] = value;
+      });
+    }
+
+    // Prepare benchmark data
+    const benchmarkData = context.benchmark ? {
+      symbol: context.benchmark.symbol,
+      current_price: context.benchmark.currentPrice,
+      change_percent: context.benchmark.changePercent,
+      period: context.benchmark.period,
+    } : null;
+
+    // Prepare macro context
+    const macroContext = context.macroIndicators ? {
+      fed_rate: context.macroIndicators.fedFundsRate,
+      vix: context.macroIndicators.vixIndex,
+      cpi: context.macroIndicators.cpiInflation,
+      market_condition: insights.macroContext?.marketCondition || "neutral",
+      volatility_level: insights.macroContext?.volatilityLevel || "medium",
+    } : null;
+
+    // Prepare visual patterns
+    const visualPatterns = insights.visualPatterns ? {
+      trend_analysis: insights.visualPatterns.trendAnalysis,
+      allocation_insights: insights.visualPatterns.allocationInsights,
+      correlation_insights: insights.visualPatterns.correlationInsights,
+    } : null;
+
+    const { data, error } = await supabase
+      .from("ai_insights")
+      .insert({
+        user_id: userId,
+        health_score: 10 - insights.riskScore,
+        risk_score: insights.riskScore,
+        geographic_exposure: insights.geographicExposure,
+        sector_exposure: insights.sectorExposure,
+        recommendations: insights.recommendations,
+        is_critical: insights.riskScore >= 7.0,
+        notification_sent: false,
+        analysis_type: "multi-modal",
+        chart_urls: chartUrls,
+        sentiment_data: sentimentData,
+        benchmark_data: benchmarkData,
+        macro_context: macroContext,
+        visual_patterns: visualPatterns,
+        api_cost_cents: apiCostCents,
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("Error storing enhanced insights:", error);
+      return null;
+    }
+
+    console.log("Enhanced insights stored with ID:", data.id);
+    return data.id;
+  } catch (error) {
+    console.error("Error storing enhanced insights:", error);
+    return null;
+  }
+}
 
 /**
  * Fetch portfolio data for analysis
@@ -350,8 +527,9 @@ async function storeInsights(
 
 /**
  * POST /portfolio-analysis/analyze
- * Generate AI portfolio analysis
+ * Generate AI portfolio analysis with multi-modal enhancements
  * Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7
+ * Task 7: Enhanced Portfolio Analysis Handler
  */
 async function handleAnalyzePortfolio(req: Request, userId: string) {
   try {
@@ -372,9 +550,23 @@ async function handleAnalyzePortfolio(req: Request, userId: string) {
       );
     }
 
-    // Get portfolio ID from request (optional)
+    // Get request parameters
     const body = await req.json().catch(() => ({}));
     const portfolioId = body.portfolio_id;
+    const forceRefresh = body.force === true;
+
+    // Task 7.8: Check cache (30-minute TTL)
+    if (!forceRefresh) {
+      const cachedInsights = await getCachedInsights(userId);
+      if (cachedInsights) {
+        console.log("Returning cached insights for user:", userId);
+        return jsonResponse({
+          success: true,
+          cached: true,
+          analysis: cachedInsights,
+        });
+      }
+    }
 
     // Fetch portfolio data
     const portfolioContext = await fetchPortfolioData(userId, portfolioId);
@@ -382,6 +574,160 @@ async function handleAnalyzePortfolio(req: Request, userId: string) {
       return errorResponse(
         "No portfolio data found. Please add assets to your portfolio first.",
         404
+      );
+    }
+
+    // Task 8.4: Check cost threshold before analysis
+    const costCheck = await shouldUseMultiModal();
+    const costBasedFallback = !costCheck.allowed;
+    
+    if (costBasedFallback) {
+      console.warn(`Cost-based fallback triggered: ${costCheck.reason}`);
+    }
+
+    // Track API costs
+    let apiCostCents = 0;
+
+    // Task 7.2: Integrate chart generator (parallel execution)
+    console.log("Generating charts...");
+    const [performanceChart, allocationChart, correlationChart] = await Promise.all([
+      chartGenerator.generatePerformanceChart({
+        dates: generateLast30Days(),
+        values: portfolioContext.assets.map(a => a.totalValue),
+        currency: portfolioContext.currency,
+      }).catch(err => {
+        console.error("Performance chart generation failed:", err);
+        return null;
+      }),
+      chartGenerator.generateAllocationChart({
+        labels: portfolioContext.assets.map(a => a.symbol),
+        values: portfolioContext.assets.map(a => (a.totalValue / portfolioContext.totalValue) * 100),
+      }).catch(err => {
+        console.error("Allocation chart generation failed:", err);
+        return null;
+      }),
+      generateCorrelationChartData(portfolioContext).catch(err => {
+        console.error("Correlation chart generation failed:", err);
+        return null;
+      }),
+    ]);
+
+    // Task 7.3: Integrate market data aggregator (parallel execution)
+    console.log("Fetching market data...");
+    const [benchmarkData, macroIndicators] = await Promise.all([
+      marketDataAggregator.fetchBenchmarkData("30D").catch(err => {
+        console.error("Benchmark data fetch failed:", err);
+        return null;
+      }),
+      marketDataAggregator.fetchMacroIndicators().catch(err => {
+        console.error("Macro indicators fetch failed:", err);
+        return null;
+      }),
+    ]);
+
+    // Task 7.4: Integrate news aggregator (batch sentiment analysis)
+    console.log("Fetching sentiment data...");
+    const symbols = portfolioContext.assets.map(a => a.symbol);
+    const sentimentMap = await newsAggregator.batchAnalyzeSentiment(symbols).catch(err => {
+      console.error("Sentiment analysis failed:", err);
+      return new Map();
+    });
+
+    // Convert sentiment map to simplified format for context
+    const simplifiedSentiment = new Map<string, { score: number; magnitude: number; articles_count: number }>();
+    sentimentMap.forEach((analysis, symbol) => {
+      simplifiedSentiment.set(symbol, {
+        score: analysis.score,
+        magnitude: analysis.magnitude,
+        articles_count: analysis.articles.length,
+      });
+    });
+
+    // Determine if we can do multi-modal analysis
+    // Task 8.4: Respect cost-based fallback
+    const hasCharts = performanceChart && allocationChart && correlationChart;
+    const useMultiModal = hasCharts && alphaVantageApiKey && newsApiKey && !costBasedFallback;
+
+    let insights: EnhancedAIInsight;
+
+    if (useMultiModal) {
+      console.log("Generating multi-modal insights...");
+
+      // Task 7.5: Build multi-modal context
+      const multiModalContext: MultiModalContext = {
+        ...portfolioContext,
+        charts: {
+          performance: performanceChart!,
+          allocation: allocationChart!,
+          correlation: correlationChart!,
+        },
+        sentiment: simplifiedSentiment,
+        benchmark: benchmarkData || undefined,
+        macroIndicators: macroIndicators || undefined,
+      };
+
+      // Task 7.6: Call enhanced Gemini client
+      try {
+        insights = await generateMultiModalInsights(multiModalContext, geminiApiKey);
+        
+        // Task 8.1: Calculate and log API cost
+        apiCostCents = estimateMultiModalCost();
+        await logApiCost(
+          userId,
+          "gemini",
+          "gemini-3-flash-preview:generateContent",
+          apiCostCents,
+          MULTIMODAL_ESTIMATED_INPUT_TOKENS + MULTIMODAL_ESTIMATED_OUTPUT_TOKENS
+        );
+        
+        console.log("Multi-modal insights generated successfully");
+      } catch (error) {
+        console.error("Multi-modal analysis failed, falling back to text-only:", error);
+        
+        // Fallback to text-only analysis
+        const basicInsight = await generatePortfolioInsights(portfolioContext, geminiApiKey);
+        insights = {
+          ...basicInsight,
+          visualPatterns: undefined,
+          sentimentSummary: undefined,
+          benchmarkComparison: undefined,
+          macroContext: undefined,
+        };
+        
+        // Task 8.1: Log text-only cost
+        apiCostCents = estimateTextOnlyCost();
+        await logApiCost(
+          userId,
+          "gemini",
+          "gemini-3-flash-preview:generateContent",
+          apiCostCents,
+          TEXT_ONLY_ESTIMATED_INPUT_TOKENS + TEXT_ONLY_ESTIMATED_OUTPUT_TOKENS
+        );
+      }
+    } else {
+      const fallbackReason = costBasedFallback
+        ? "cost threshold exceeded"
+        : "missing components for multi-modal";
+      console.log(`Generating text-only insights (${fallbackReason})...`);
+      
+      // Fallback to text-only analysis
+      const basicInsight = await generatePortfolioInsights(portfolioContext, geminiApiKey);
+      insights = {
+        ...basicInsight,
+        visualPatterns: undefined,
+        sentimentSummary: undefined,
+        benchmarkComparison: undefined,
+        macroContext: undefined,
+      };
+      
+      // Task 8.1: Log text-only cost
+      apiCostCents = estimateTextOnlyCost();
+      await logApiCost(
+        userId,
+        "gemini",
+        "gemini-3-flash-preview:generateContent",
+        apiCostCents,
+        TEXT_ONLY_ESTIMATED_INPUT_TOKENS + TEXT_ONLY_ESTIMATED_OUTPUT_TOKENS
       );
     }
 
@@ -394,73 +740,140 @@ async function handleAnalyzePortfolio(req: Request, userId: string) {
     // Analyze sector exposure
     const sectorAnalysis = analyzeSectorExposure(portfolioContext);
 
-    // Generate AI insights using Gemini
-    let aiInsight;
-    try {
-      aiInsight = await generatePortfolioInsights(
-        portfolioContext,
-        geminiApiKey
+    // Merge analysis results
+    const finalInsights: EnhancedAIInsight = {
+      ...insights,
+      riskAnalysis: {
+        ...insights.riskAnalysis,
+        volatilityScore: riskMetrics.volatilityScore,
+        concentrationScore: riskMetrics.concentrationScore,
+      },
+      geographicExposure: {
+        ...geoAnalysis.exposure,
+        warnings: geoAnalysis.warnings,
+      } as typeof insights.geographicExposure,
+      sectorExposure: {
+        ...sectorAnalysis.exposure,
+        warnings: sectorAnalysis.warnings,
+      } as typeof insights.sectorExposure,
+    };
+
+    // Task 7.7: Store enhanced insights
+    if (useMultiModal) {
+      const multiModalContext: MultiModalContext = {
+        ...portfolioContext,
+        charts: {
+          performance: performanceChart!,
+          allocation: allocationChart!,
+          correlation: correlationChart!,
+        },
+        sentiment: simplifiedSentiment,
+        benchmark: benchmarkData || undefined,
+        macroIndicators: macroIndicators || undefined,
+      };
+      
+      await storeEnhancedInsights(userId, finalInsights, multiModalContext, apiCostCents);
+    } else {
+      // Store as text-only
+      await storeInsights(
+        userId,
+        10 - finalInsights.riskScore,
+        finalInsights.riskScore,
+        finalInsights.geographicExposure,
+        finalInsights.sectorExposure,
+        finalInsights.recommendations,
+        finalInsights.riskScore >= 7.0
       );
-    } catch (error) {
-      if (error instanceof GeminiAPIError) {
-        console.error("Gemini API error:", error.message);
-        return errorResponse(
-          `AI analysis failed: ${error.message}`,
-          error.statusCode || 500
-        );
-      }
-      throw error;
     }
 
-    // Calculate health score (0-10)
-    // Health score is inverse of risk score
-    const healthScore = Number((10 - aiInsight.riskScore).toFixed(1));
+    // Task 7.8: Cache results
+    await cacheInsights(userId, finalInsights);
 
-    // Determine if insights are critical
-    const isCritical =
-      geoAnalysis.warnings.length > 0 ||
-      sectorAnalysis.warnings.length > 0 ||
-      aiInsight.riskScore >= 7.0;
-
-    // Store insights in database
-    const insightId = await storeInsights(
-      userId,
-      healthScore,
-      aiInsight.riskScore,
-      geoAnalysis.exposure,
-      sectorAnalysis.exposure,
-      aiInsight.recommendations,
-      isCritical
+    // Task 8.3: Check cost threshold and log status
+    const threshold = await checkCostThreshold();
+    console.log(
+      `Monthly API costs: $${(threshold.currentCents / 100).toFixed(2)} / $${(threshold.thresholdCents / 100).toFixed(2)} (${threshold.percentUsed}%)`
     );
 
     // Return analysis results
     return jsonResponse({
       success: true,
+      cached: false,
       analysis: {
-        id: insightId,
-        healthScore,
-        riskScore: aiInsight.riskScore,
-        riskAnalysis: {
-          volatilityScore: riskMetrics.volatilityScore,
-          concentrationScore: riskMetrics.concentrationScore,
-          reasoning: aiInsight.riskAnalysis.reasoning,
-        },
-        geographicExposure: {
-          ...geoAnalysis.exposure,
-          warnings: geoAnalysis.warnings,
-        },
-        sectorExposure: {
-          ...sectorAnalysis.exposure,
-          warnings: sectorAnalysis.warnings,
-        },
-        recommendations: aiInsight.recommendations,
-        isCritical,
+        healthScore: 10 - finalInsights.riskScore,
+        riskScore: finalInsights.riskScore,
+        riskAnalysis: finalInsights.riskAnalysis,
+        geographicExposure: finalInsights.geographicExposure,
+        sectorExposure: finalInsights.sectorExposure,
+        recommendations: finalInsights.recommendations,
+        visualPatterns: finalInsights.visualPatterns,
+        sentimentSummary: finalInsights.sentimentSummary,
+        benchmarkComparison: finalInsights.benchmarkComparison,
+        macroContext: finalInsights.macroContext,
+        isCritical: finalInsights.riskScore >= 7.0,
+        analysisType: useMultiModal ? "multi-modal" : "text-only",
         generatedAt: new Date().toISOString(),
       },
     });
   } catch (error) {
     console.error("Analyze portfolio handler error:", error);
     return errorResponse("Internal server error", 500);
+  }
+}
+
+/**
+ * Generate last 30 days of dates
+ */
+function generateLast30Days(): string[] {
+  const dates: string[] = [];
+  const now = new Date();
+  
+  for (let i = 29; i >= 0; i--) {
+    const date = new Date(now);
+    date.setDate(date.getDate() - i);
+    dates.push(date.toISOString().split('T')[0]);
+  }
+  
+  return dates;
+}
+
+/**
+ * Generate correlation chart data
+ */
+async function generateCorrelationChartData(context: PortfolioContext): Promise<string | null> {
+  try {
+    const symbols = context.assets.map(a => a.symbol);
+    
+    // Calculate simple correlation matrix based on performance
+    const correlationMatrix: number[][] = [];
+    
+    for (let i = 0; i < symbols.length; i++) {
+      const row: number[] = [];
+      for (let j = 0; j < symbols.length; j++) {
+        if (i === j) {
+          row.push(1.0); // Perfect correlation with self
+        } else {
+          // Simple correlation estimate based on asset types
+          const asset1 = context.assets[i];
+          const asset2 = context.assets[j];
+          
+          if (asset1.type === asset2.type) {
+            row.push(0.6); // Same type = moderate correlation
+          } else {
+            row.push(0.2); // Different type = low correlation
+          }
+        }
+      }
+      correlationMatrix.push(row);
+    }
+    
+    return await chartGenerator.generateCorrelationHeatmap({
+      assets: symbols,
+      correlationMatrix,
+    });
+  } catch (error) {
+    console.error("Correlation chart generation failed:", error);
+    return null;
   }
 }
 

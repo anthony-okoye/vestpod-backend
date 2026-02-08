@@ -233,7 +233,7 @@ export async function generatePortfolioInsights(
   context: PortfolioContext,
   apiKey: string
 ): Promise<AIInsight> {
-  const model = "gemini-1.5-pro"; // Using Gemini 1.5 Pro (latest stable)
+  const model = "gemini-3-flash-preview";
   const url = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${apiKey}`;
 
   // Build system prompt
@@ -378,6 +378,302 @@ Output Format (JSON only, no additional text):
 }
 
 /**
+ * Multi-modal context for enhanced AI analysis
+ */
+export interface MultiModalContext extends PortfolioContext {
+  charts: {
+    performance: string; // base64 PNG
+    allocation: string; // base64 PNG
+    correlation: string; // base64 PNG
+  };
+  sentiment?: Map<string, {
+    score: number;
+    magnitude: number;
+    articles_count: number;
+  }>;
+  benchmark?: {
+    symbol: string;
+    currentPrice: number;
+    changePercent: number;
+    period: string;
+  };
+  macroIndicators?: {
+    fedFundsRate: number;
+    vixIndex: number;
+    cpiInflation: number;
+  };
+}
+
+/**
+ * Enhanced AI Insight with multi-modal analysis
+ */
+export interface EnhancedAIInsight extends AIInsight {
+  visualPatterns?: {
+    trendAnalysis: string;
+    allocationInsights: string;
+    correlationInsights: string;
+  };
+  sentimentSummary?: {
+    overallSentiment: number;
+    negativeAssets: string[];
+    positiveAssets: string[];
+  };
+  benchmarkComparison?: {
+    relativePerformance: number;
+    outperforming: boolean;
+    reasoning: string;
+  };
+  macroContext?: {
+    marketCondition: "bullish" | "bearish" | "neutral";
+    volatilityLevel: "low" | "medium" | "high";
+    recommendations: string[];
+  };
+}
+
+/**
+ * Generate multi-modal portfolio insights using Gemini 3 Pro
+ * Analyzes both text data and chart images for comprehensive insights
+ * 
+ * @param context - Multi-modal portfolio context with chart images
+ * @param apiKey - Gemini API key
+ * @returns AI-generated insights with visual pattern analysis
+ */
+export async function generateMultiModalInsights(
+  context: MultiModalContext,
+  apiKey: string
+): Promise<EnhancedAIInsight> {
+  const model = "gemini-3-flash-preview";
+  const url = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${apiKey}`;
+
+  // Build system prompt with visual analysis instructions
+  const systemPrompt = buildMultiModalAnalysisPrompt(context);
+
+  // Build multi-modal request with inline image data
+  const requestBody = {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text: systemPrompt,
+          },
+          // Add performance chart as inline data
+          {
+            inlineData: {
+              mimeType: "image/png",
+              data: context.charts.performance,
+            },
+          },
+          // Add allocation chart as inline data
+          {
+            inlineData: {
+              mimeType: "image/png",
+              data: context.charts.allocation,
+            },
+          },
+          // Add correlation heatmap as inline data
+          {
+            inlineData: {
+              mimeType: "image/png",
+              data: context.charts.correlation,
+            },
+          },
+          {
+            text: "Analyze the visual patterns in these three charts (performance trend, allocation distribution, and correlation heatmap) along with the portfolio data provided above.",
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.2, // Lower temperature for factual analysis
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 8192,
+    },
+  };
+
+  try {
+    const response = await fetchWithRetry(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const data = await response.json();
+
+    // Validate response structure
+    if (!data.candidates || data.candidates.length === 0) {
+      throw new GeminiAPIError(
+        "No response candidates from Gemini API",
+        undefined,
+        false
+      );
+    }
+
+    const candidate = data.candidates[0];
+    if (!candidate.content || !candidate.content.parts || candidate.content.parts.length === 0) {
+      throw new GeminiAPIError(
+        "Invalid response structure from Gemini API",
+        undefined,
+        false
+      );
+    }
+
+    const responseText = candidate.content.parts[0].text;
+
+    // Parse JSON response with enhanced fields
+    const insight = parseEnhancedInsightResponse(responseText);
+
+    return {
+      ...insight,
+      timestamp: Date.now(),
+    };
+  } catch (error) {
+    if (error instanceof GeminiAPIError) {
+      throw error;
+    }
+    throw new GeminiAPIError(
+      `Failed to generate multi-modal insights: ${(error as Error).message}`,
+      undefined,
+      true
+    );
+  }
+}
+
+/**
+ * Build multi-modal analysis prompt with visual analysis instructions
+ */
+function buildMultiModalAnalysisPrompt(context: MultiModalContext): string {
+  const assetsDescription = context.assets
+    .map(
+      (asset) =>
+        `- ${asset.symbol} (${asset.name}): ${asset.quantity} shares @ ${asset.currentPrice.toFixed(2)} = ${asset.totalValue.toFixed(2)} (${asset.gainLossPercent >= 0 ? "+" : ""}${asset.gainLossPercent.toFixed(2)}%)`
+    )
+    .join("\n");
+
+  // Build sentiment context if available
+  let sentimentContext = "";
+  if (context.sentiment && context.sentiment.size > 0) {
+    const sentimentLines: string[] = [];
+    context.sentiment.forEach((sentiment, symbol) => {
+      sentimentLines.push(
+        `  ${symbol}: score=${sentiment.score.toFixed(2)}, confidence=${sentiment.magnitude.toFixed(2)}, articles=${sentiment.articles_count}`
+      );
+    });
+    sentimentContext = `\nMarket Sentiment Data:\n${sentimentLines.join("\n")}`;
+  }
+
+  // Build benchmark context if available
+  let benchmarkContext = "";
+  if (context.benchmark) {
+    benchmarkContext = `\nBenchmark Comparison (${context.benchmark.symbol}):\n- Current Price: ${context.benchmark.currentPrice.toFixed(2)}\n- Change: ${context.benchmark.changePercent >= 0 ? "+" : ""}${context.benchmark.changePercent.toFixed(2)}%\n- Period: ${context.benchmark.period}`;
+  }
+
+  // Build macro context if available
+  let macroContext = "";
+  if (context.macroIndicators) {
+    macroContext = `\nMacro-Economic Indicators:\n- Fed Funds Rate: ${context.macroIndicators.fedFundsRate.toFixed(2)}%\n- VIX (Volatility): ${context.macroIndicators.vixIndex.toFixed(1)}\n- CPI Inflation: ${context.macroIndicators.cpiInflation.toFixed(1)}%`;
+  }
+
+  return `You are an autonomous portfolio analysis agent with visual analysis capabilities. Your task is to:
+
+1. ANALYZE the user's portfolio for risks and opportunities
+2. ANALYZE the visual patterns in the provided charts
+3. INCORPORATE market sentiment, benchmark comparison, and macro-economic context
+4. VERIFY your analysis using multi-step reasoning
+5. GENERATE actionable recommendations
+6. SELF-CORRECT any errors in your analysis
+
+Portfolio Context:
+- Total Value: ${context.totalValue.toFixed(2)} ${context.currency}
+- Number of Assets: ${context.assets.length}
+- Assets:
+${assetsDescription}
+
+${context.userPreferences ? `User Preferences:
+- Risk Tolerance: ${context.userPreferences.riskTolerance || "Not specified"}
+- Investment Goals: ${context.userPreferences.investmentGoals?.join(", ") || "Not specified"}
+` : ""}${sentimentContext}${benchmarkContext}${macroContext}
+
+Visual Analysis Instructions:
+You will receive 3 chart images:
+1. Performance Chart: 30-day portfolio value trend
+2. Allocation Chart: Sector/geographic distribution
+3. Correlation Heatmap: Asset relationship matrix
+
+Analyze these charts for:
+- Trend patterns (upward, downward, volatile)
+- Concentration risks (over-allocation to sectors/regions)
+- Correlation patterns (diversification effectiveness)
+- Visual anomalies or concerning patterns
+
+Use multi-step reasoning to analyze:
+1. Calculate risk score (0-10) based on volatility and concentration
+2. Analyze geographic exposure by country
+3. Analyze sector exposure by industry
+4. Analyze visual patterns from charts
+5. Incorporate sentiment data (flag assets with score < -0.3 as negative)
+6. Compare against benchmark performance
+7. Consider macro-economic context (flag VIX > 30 as high volatility)
+8. Generate warnings if concentration exceeds thresholds (60% country, 40% sector)
+9. Provide actionable recommendations based on all data sources
+10. Self-verify your calculations
+
+Output Format (JSON only, no additional text):
+{
+  "risk_score": <number 0-10>,
+  "risk_analysis": {
+    "volatility_score": <number 0-10>,
+    "concentration_score": <number 0-10>,
+    "reasoning": "<step-by-step explanation including visual pattern observations>"
+  },
+  "geographic_exposure": {
+    "<country>": <percentage>,
+    "warnings": ["<warning if any>"]
+  },
+  "sector_exposure": {
+    "<sector>": <percentage>,
+    "warnings": ["<warning if any>"]
+  },
+  "recommendations": [
+    {
+      "type": "warning|suggestion|positive",
+      "title": "<short title>",
+      "description": "<detailed description including visual insights>",
+      "actions": ["<action 1>", "<action 2>"],
+      "reasoning": "<why this recommendation, referencing visual patterns>"
+    }
+  ],
+  "verification": {
+    "self_check_passed": true|false,
+    "corrections_made": ["<correction if any>"]
+  },
+  "visual_patterns": {
+    "trend_analysis": "<analysis of performance chart trends>",
+    "allocation_insights": "<insights from allocation chart>",
+    "correlation_insights": "<insights from correlation heatmap>"
+  },
+  "sentiment_summary": {
+    "overall_sentiment": <average sentiment score>,
+    "negative_assets": ["<assets with score < -0.3>"],
+    "positive_assets": ["<assets with score > 0.3>"]
+  },
+  "benchmark_comparison": {
+    "relative_performance": <portfolio change % - benchmark change %>,
+    "outperforming": <true if portfolio > benchmark>,
+    "reasoning": "<explanation of relative performance>"
+  },
+  "macro_context": {
+    "market_condition": "bullish|bearish|neutral",
+    "volatility_level": "low|medium|high",
+    "recommendations": ["<macro-aware recommendations>"]
+  }
+}`;
+}
+
+/**
  * Parse insight response from Gemini
  */
 function parseInsightResponse(responseText: string): Omit<AIInsight, "timestamp"> {
@@ -437,6 +733,92 @@ function parseInsightResponse(responseText: string): Omit<AIInsight, "timestamp"
 }
 
 /**
+ * Parse enhanced insight response from Gemini (multi-modal)
+ */
+function parseEnhancedInsightResponse(responseText: string): Omit<EnhancedAIInsight, "timestamp"> {
+  try {
+    // Extract JSON from response (handle markdown code blocks)
+    let jsonText = responseText.trim();
+    
+    // Remove markdown code blocks if present
+    if (jsonText.startsWith("```json")) {
+      jsonText = jsonText.replace(/```json\n?/g, "").replace(/```\n?/g, "");
+    } else if (jsonText.startsWith("```")) {
+      jsonText = jsonText.replace(/```\n?/g, "");
+    }
+
+    const parsed = JSON.parse(jsonText);
+
+    const baseInsight = {
+      riskScore: parsed.risk_score || 0,
+      riskAnalysis: {
+        volatilityScore: parsed.risk_analysis?.volatility_score || 0,
+        concentrationScore: parsed.risk_analysis?.concentration_score || 0,
+        reasoning: parsed.risk_analysis?.reasoning || "",
+      },
+      geographicExposure: {
+        ...parsed.geographic_exposure,
+        warnings: parsed.geographic_exposure?.warnings || [],
+      },
+      sectorExposure: {
+        ...parsed.sector_exposure,
+        warnings: parsed.sector_exposure?.warnings || [],
+      },
+      recommendations: (parsed.recommendations || []).map((rec: {
+        type: string;
+        title: string;
+        description: string;
+        actions: string[];
+        reasoning: string;
+      }) => ({
+        type: rec.type as "warning" | "suggestion" | "positive",
+        title: rec.title,
+        description: rec.description,
+        actions: rec.actions || [],
+        reasoning: rec.reasoning || "",
+      })),
+      verification: {
+        selfCheckPassed: parsed.verification?.self_check_passed || false,
+        correctionsMade: parsed.verification?.corrections_made || [],
+      },
+    };
+
+    // Add enhanced fields
+    const enhancedInsight: Omit<EnhancedAIInsight, "timestamp"> = {
+      ...baseInsight,
+      visualPatterns: parsed.visual_patterns ? {
+        trendAnalysis: parsed.visual_patterns.trend_analysis || "",
+        allocationInsights: parsed.visual_patterns.allocation_insights || "",
+        correlationInsights: parsed.visual_patterns.correlation_insights || "",
+      } : undefined,
+      sentimentSummary: parsed.sentiment_summary ? {
+        overallSentiment: parsed.sentiment_summary.overall_sentiment || 0,
+        negativeAssets: parsed.sentiment_summary.negative_assets || [],
+        positiveAssets: parsed.sentiment_summary.positive_assets || [],
+      } : undefined,
+      benchmarkComparison: parsed.benchmark_comparison ? {
+        relativePerformance: parsed.benchmark_comparison.relative_performance || 0,
+        outperforming: parsed.benchmark_comparison.outperforming || false,
+        reasoning: parsed.benchmark_comparison.reasoning || "",
+      } : undefined,
+      macroContext: parsed.macro_context ? {
+        marketCondition: parsed.macro_context.market_condition || "neutral",
+        volatilityLevel: parsed.macro_context.volatility_level || "medium",
+        recommendations: parsed.macro_context.recommendations || [],
+      } : undefined,
+    };
+
+    return enhancedInsight;
+  } catch (error) {
+    throw new GeminiAPIError(
+      `Failed to parse enhanced insight response: ${(error as Error).message}`,
+      undefined,
+      false
+    );
+  }
+}
+
+/**
  * Send chat message to Gemini AI assistant
  * Maintains conversation context
  * 
@@ -452,7 +834,7 @@ export async function sendChatMessage(
   history: ChatMessage[],
   apiKey: string
 ): Promise<ChatResponse> {
-  const model = "gemini-1.5-pro";
+  const model = "gemini-3-flash-preview";
   const url = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${apiKey}`;
 
   // Build system instruction
@@ -613,7 +995,7 @@ function parseActionsFromResponse(responseText: string): ChatAction[] {
  * @returns True if connection successful
  */
 export async function testConnection(apiKey: string): Promise<boolean> {
-  const model = "gemini-1.5-pro";
+  const model = "gemini-3-flash-preview";
   const url = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${apiKey}`;
 
   const requestBody = {
